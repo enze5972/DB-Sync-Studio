@@ -97,6 +97,9 @@ jobs:
           name: DB Sync Studio ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            dist/linux/**
-            dist/macos/**
-            dist/windows/**
+            dist/linux/**/*.AppImage
+            dist/linux/**/*.deb
+            dist/linux/**/*.rpm
+            dist/macos/**/*.dmg
+            dist/windows/**/*.msi
+            dist/windows/**/*.exe
