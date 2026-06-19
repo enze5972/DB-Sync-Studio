@@ -10,6 +10,12 @@ DB Sync Studio 是一个跨平台数据库同步桌面软件，面向 `macOS`、
 - 本地持久化使用 `SQLite`
 - 打包产物内置 JRE，面向安装即用体验
 
+## 仓库
+
+- GitHub: [enze5972/DB-Sync-Studio](https://github.com/enze5972/DB-Sync-Studio)
+- 当前仓库仅保留源码、配置与必要脚本
+- 生成物、运行时目录、文档目录和本地指令文件不纳入 GitHub
+
 ## 目标
 
 DB Sync Studio 的目标是提供一个本地化的数据库同步工作台，用于：
@@ -258,6 +264,12 @@ macOS 当前示例安装包：
 - macOS 安装包会把后端资源打进 `.app`，保证安装后可直接打开
 
 ## 当前验证
+
+- 桌面壳入口：`app-shell/src-tauri/src/main.rs`
+- 后端启动：`app-shell/src-tauri/src/backend.rs`
+- 前端入口：`app-ui/src/main.js`
+- 本地后端 API：`app-core/src/main/java/com/dbsyncstudio/core/backend/DesktopBackendServer.java`
+- SQLite 初始化与迁移：`app-store/src/main/java/com/dbsyncstudio/store/sqlite/SqliteSchemaInitializer.java`
 
 仓库当前已通过以下验证：
 
