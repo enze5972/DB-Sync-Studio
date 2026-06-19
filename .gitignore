@@ -5,6 +5,7 @@
 **/node_modules/
 release/
 docs/
+AGENTS.md
 app-shell/src-tauri/resources/backend/app-core.jar
 app-shell/src-tauri/resources/backend/lib/
 app-shell/src-tauri/resources/backend/runtime/
