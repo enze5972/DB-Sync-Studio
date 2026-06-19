@@ -1,0 +1,122 @@
+import { createRouter, createWebHashHistory } from 'vue-router'
+import DashboardView from '../views/DashboardView.vue'
+import DatasourceView from '../views/DatasourceView.vue'
+import TaskView from '../views/TaskView.vue'
+import FieldMappingView from '../views/FieldMappingView.vue'
+import MetadataScanView from '../views/MetadataScanView.vue'
+import DataPreviewView from '../views/DataPreviewView.vue'
+import SqlEditorView from '../views/SqlEditorView.vue'
+import TaskWizardView from '../views/TaskWizardView.vue'
+import LogsView from '../views/LogsView.vue'
+import SchemaCompareView from '../views/SchemaCompareView.vue'
+import ScheduleCenterView from '../views/ScheduleCenterView.vue'
+import DataValidationView from '../views/DataValidationView.vue'
+import ExecutionHistoryView from '../views/ExecutionHistoryView.vue'
+import TaskRunDetailView from '../views/TaskRunDetailView.vue'
+import RunMonitoringView from '../views/RunMonitoringView.vue'
+import AlertSettingsView from '../views/AlertSettingsView.vue'
+import AlertHistoryView from '../views/AlertHistoryView.vue'
+import ComingSoonView from '../views/ComingSoonView.vue'
+
+const routes = [
+  {
+    path: '/',
+    name: 'dashboard',
+    component: DashboardView
+  },
+  {
+    path: '/datasource',
+    name: 'datasource',
+    component: DatasourceView
+  },
+  {
+    path: '/tasks',
+    name: 'tasks',
+    component: TaskView
+  },
+  {
+    path: '/task-wizard',
+    name: 'task-wizard',
+    component: TaskWizardView
+  },
+  {
+    path: '/mapping',
+    name: 'mapping',
+    component: FieldMappingView
+  },
+  {
+    path: '/metadata',
+    name: 'metadata',
+    component: MetadataScanView
+  },
+  {
+    path: '/preview',
+    name: 'preview',
+    component: DataPreviewView
+  },
+  {
+    path: '/sql',
+    name: 'sql',
+    component: SqlEditorView
+  },
+  {
+    path: '/schema-compare',
+    name: 'schema-compare',
+    component: SchemaCompareView
+  },
+  {
+    path: '/logs',
+    name: 'logs',
+    component: LogsView
+  },
+  {
+    path: '/validation',
+    name: 'validation',
+    component: DataValidationView
+  },
+  {
+    path: '/execution-history',
+    name: 'execution-history',
+    component: ExecutionHistoryView
+  },
+  {
+    path: '/run-monitoring',
+    name: 'run-monitoring',
+    component: RunMonitoringView
+  },
+  {
+    path: '/alert-settings',
+    name: 'alert-settings',
+    component: AlertSettingsView
+  },
+  {
+    path: '/alert-history',
+    name: 'alert-history',
+    component: AlertHistoryView
+  },
+  {
+    path: '/execution-history/detail',
+    name: 'execution-history-detail',
+    component: TaskRunDetailView
+  },
+  {
+    path: '/task-run',
+    name: 'task-run',
+    component: TaskRunDetailView
+  },
+  {
+    path: '/schedule-center',
+    name: 'schedule-center',
+    component: ScheduleCenterView
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: ComingSoonView
+  }
+]
+
+export default createRouter({
+  history: createWebHashHistory(),
+  routes
+})

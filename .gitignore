@@ -1,0 +1,6 @@
+.idea/
+.playwright-cli/
+**/target/
+**/dist/
+**/node_modules/
+release/

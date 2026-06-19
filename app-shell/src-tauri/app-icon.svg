@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="160" y1="120" x2="864" y2="904" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#0f4c81"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="280" y1="248" x2="760" y2="776" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="292" y1="300" x2="732" y2="724" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="48" y="48" width="928" height="928" rx="208" fill="url(#bg)"/>
+  <rect x="120" y="120" width="784" height="784" rx="168" fill="#0f172a" opacity="0.28"/>
+
+  <g transform="translate(0,10)">
+    <ellipse cx="512" cy="392" rx="220" ry="72" fill="url(#accent)" opacity="0.95"/>
+    <rect x="292" y="392" width="440" height="224" rx="32" fill="url(#panel)"/>
+    <ellipse cx="512" cy="392" rx="220" ry="72" fill="#e2e8f0"/>
+    <ellipse cx="512" cy="392" rx="164" ry="48" fill="#f8fafc"/>
+
+    <ellipse cx="512" cy="504" rx="220" ry="72" fill="#cbd5e1"/>
+    <ellipse cx="512" cy="504" rx="164" ry="48" fill="#e2e8f0"/>
+    <ellipse cx="512" cy="616" rx="220" ry="72" fill="#94a3b8"/>
+    <ellipse cx="512" cy="616" rx="164" ry="48" fill="#cbd5e1"/>
+
+    <path d="M694 356c54 26 88 80 88 142 0 70-44 132-111 161" fill="none" stroke="url(#accent)" stroke-width="40" stroke-linecap="round"/>
+    <path d="M788 518l-34-18 22-30z" fill="#22c55e"/>
+
+    <path d="M330 668c-54-26-88-80-88-142 0-70 44-132 111-161" fill="none" stroke="#60a5fa" stroke-width="40" stroke-linecap="round"/>
+    <path d="M236 506l34 18-22 30z" fill="#60a5fa"/>
+  </g>
+</svg>

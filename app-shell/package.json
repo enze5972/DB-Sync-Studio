@@ -1,0 +1,18 @@
+{
+  "name": "db-sync-studio-shell",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "npm --prefix ../app-ui run dev",
+    "build-ui": "npm --prefix ../app-ui run build",
+    "tauri:dev": "cargo tauri dev",
+    "tauri:build": "npm run build-ui && cargo tauri build",
+    "package": "node ../scripts/package.js",
+    "package:linux": "node ../scripts/package.js linux",
+    "package:macos": "node ../scripts/package.js macos",
+    "package:windows": "node ../scripts/package.js windows"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.6.3"
+  }
+}

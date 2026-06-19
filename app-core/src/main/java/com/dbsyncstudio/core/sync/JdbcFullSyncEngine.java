@@ -1,0 +1,462 @@
+package com.dbsyncstudio.core.sync;
+
+import com.dbsyncstudio.core.connection.DefaultDatasourceConnectionOpener;
+import com.dbsyncstudio.core.connection.DatasourceConnectionOpener;
+import com.dbsyncstudio.core.metadata.DatabaseMetadataScanner;
+import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
+import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.metadata.ColumnMetadata;
+import com.dbsyncstudio.model.metadata.SchemaMetadata;
+import com.dbsyncstudio.model.metadata.TableMetadata;
+import com.dbsyncstudio.model.sync.FullSyncRequest;
+import com.dbsyncstudio.model.sync.FullSyncResult;
+import com.dbsyncstudio.model.sync.SyncCheckpoint;
+import com.dbsyncstudio.model.sync.SyncCheckpointRepository;
+
+import lombok.NonNull;
+
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
+public class JdbcFullSyncEngine implements FullSyncEngine {
+
+    @NonNull
+    private final DatabaseMetadataScanner metadataScanner;
+    @NonNull
+    private final DatasourceConnectionOpener connectionOpener;
+    private final SyncCheckpointRepository checkpointRepository;
+
+    public JdbcFullSyncEngine() {
+        this(new JdbcDatabaseMetadataScanner(), new DefaultDatasourceConnectionOpener(), null);
+    }
+
+    public JdbcFullSyncEngine(DatabaseMetadataScanner metadataScanner, DatasourceConnectionOpener connectionOpener) {
+        this(metadataScanner, connectionOpener, null);
+    }
+
+    public JdbcFullSyncEngine(DatabaseMetadataScanner metadataScanner, DatasourceConnectionOpener connectionOpener,
+                              SyncCheckpointRepository checkpointRepository) {
+        this.metadataScanner = metadataScanner;
+        this.connectionOpener = connectionOpener;
+        this.checkpointRepository = checkpointRepository;
+    }
+
+    @Override
+    public FullSyncResult sync(FullSyncRequest request) {
+        return sync(request, null);
+    }
+
+    public FullSyncResult sync(FullSyncRequest request, SyncTaskProgressListener progressListener) {
+        long startTime = System.currentTimeMillis();
+        try {
+            validateRequest(request);
+
+            try (Connection sourceConnection = connectionOpener.open(request.getSourceDatasource());
+                 Connection targetConnection = connectionOpener.open(request.getTargetDatasource())) {
+                targetConnection.setAutoCommit(false);
+                try {
+                    TableMetadata sourceTable = findSourceTable(sourceConnection, request.getSourceTableName(), request.getSourceSchemaName());
+                    TableMetadata targetTable = cloneTargetTable(sourceTable, request.getTargetTableName(), request.getTargetSchemaName());
+                    boolean createdTargetTable = ensureTargetTableExists(targetConnection, targetTable);
+                    long totalRowCount = countRows(sourceConnection, sourceTable);
+                    long startOffset = parseCheckpointValue(request.getCheckpointValue());
+                    boolean resumed = startOffset > 0L;
+
+                    if (request.isReplaceTargetData() && !resumed) {
+                        clearTargetTable(targetConnection, targetTable);
+                    }
+
+                    if (progressListener != null) {
+                        progressListener.updateProgress(totalRowCount, 0L, 0L, 0L, 0.0d,
+                                Long.valueOf(startTime), null, null, "Starting full sync");
+                    }
+
+                    long insertedRows = copyTableData(sourceConnection, targetConnection, sourceTable, targetTable, request,
+                            progressListener, totalRowCount, startTime, startOffset);
+                    targetConnection.commit();
+
+                    String checkpointKey = request.getCheckpointKey();
+                    if (progressListener != null && checkpointKey != null && checkpointKey.trim().length() > 0) {
+                        progressListener.saveCheckpoint(checkpointKey, null);
+                    }
+
+                    return FullSyncResult.builder()
+                            .success(true)
+                            .message("Full sync completed successfully")
+                            .sourceRowCount(insertedRows)
+                            .insertedRowCount(insertedRows)
+                            .durationMillis(System.currentTimeMillis() - startTime)
+                            .createdTargetTable(createdTargetTable)
+                            .checkpointValue(null)
+                            .resumed(resumed)
+                            .build();
+                } catch (SQLException ex) {
+                    targetConnection.rollback();
+                    throw ex;
+                }
+            }
+        } catch (SQLException ex) {
+            throw new IllegalStateException("Full sync failed: " + ex.getMessage(), ex);
+        }
+    }
+
+    private void validateRequest(FullSyncRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Full sync request must not be null");
+        }
+        if (request.getSourceDatasource() == null) {
+            throw new IllegalArgumentException("Source datasource must not be null");
+        }
+        if (request.getTargetDatasource() == null) {
+            throw new IllegalArgumentException("Target datasource must not be null");
+        }
+        if (request.getSourceTableName() == null || request.getSourceTableName().trim().length() == 0) {
+            throw new IllegalArgumentException("Source table name must not be blank");
+        }
+        if (request.getTargetTableName() == null || request.getTargetTableName().trim().length() == 0) {
+            throw new IllegalArgumentException("Target table name must not be blank");
+        }
+        if (request.getPageSize() <= 0) {
+            throw new IllegalArgumentException("Page size must be greater than 0");
+        }
+        if (request.getBatchSize() <= 0) {
+            throw new IllegalArgumentException("Batch size must be greater than 0");
+        }
+    }
+
+    private TableMetadata findSourceTable(Connection sourceConnection, String sourceTableName, String sourceSchemaName)
+            throws SQLException {
+        List<SchemaMetadata> schemas = metadataScanner.scan(sourceConnection);
+        for (SchemaMetadata schemaMetadata : schemas) {
+            if (sourceSchemaName != null && sourceSchemaName.trim().length() > 0
+                    && !sourceSchemaName.equalsIgnoreCase(schemaMetadata.getSchemaName())) {
+                continue;
+            }
+            if (schemaMetadata.getTables() == null) {
+                continue;
+            }
+            for (TableMetadata tableMetadata : schemaMetadata.getTables()) {
+                if (sourceTableName.equalsIgnoreCase(tableMetadata.getTableName())) {
+                    return tableMetadata;
+                }
+            }
+        }
+        throw new SQLException("Source table not found: " + sourceTableName);
+    }
+
+    private TableMetadata cloneTargetTable(TableMetadata sourceTable, String targetTableName, String targetSchemaName) {
+        TableMetadata targetTable = new TableMetadata();
+        targetTable.setSchemaName(targetSchemaName != null && targetSchemaName.trim().length() > 0
+                ? targetSchemaName.trim()
+                : sourceTable.getSchemaName());
+        targetTable.setTableName(targetTableName);
+        targetTable.setColumns(new ArrayList<ColumnMetadata>(sourceTable.getColumns()));
+        return targetTable;
+    }
+
+    private boolean ensureTargetTableExists(Connection targetConnection, TableMetadata targetTable) throws SQLException {
+        if (tableExists(targetConnection, targetTable.getSchemaName(), targetTable.getTableName())) {
+            return false;
+        }
+
+        String createTableSql = buildCreateTableSql(targetConnection, targetTable);
+        try (Statement statement = targetConnection.createStatement()) {
+            statement.execute(createTableSql);
+        }
+        return true;
+    }
+
+    private boolean tableExists(Connection connection, String schemaName, String tableName) throws SQLException {
+        DatabaseMetaData metaData = connection.getMetaData();
+        try (ResultSet tables = metaData.getTables(connection.getCatalog(), normalizeSchemaName(schemaName), "%", new String[]{"TABLE"})) {
+            while (tables.next()) {
+                String currentSchemaName = tables.getString("TABLE_SCHEM");
+                String currentTableName = tables.getString("TABLE_NAME");
+                boolean schemaMatches = schemaName == null
+                        || schemaName.trim().length() == 0
+                        || currentSchemaName == null
+                        || schemaName.equalsIgnoreCase(currentSchemaName);
+                if (schemaMatches && currentTableName != null && tableName.equalsIgnoreCase(currentTableName)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    private void clearTargetTable(Connection targetConnection, TableMetadata targetTable) throws SQLException {
+        String sql = "DELETE FROM " + qualifiedTableName(targetTable.getSchemaName(), targetTable.getTableName());
+        try (Statement statement = targetConnection.createStatement()) {
+            statement.executeUpdate(sql);
+        }
+    }
+
+    private long copyTableData(Connection sourceConnection, Connection targetConnection, TableMetadata sourceTable,
+                               TableMetadata targetTable, FullSyncRequest request, SyncTaskProgressListener progressListener,
+                               long totalRowCount, long startTime, long startOffset) throws SQLException {
+        List<ColumnMetadata> columns = sourceTable.getColumns();
+        String selectSql = buildSelectSql(sourceTable, request.getPageSize());
+        String insertSql = buildInsertSql(targetTable);
+        long offset = startOffset;
+        long insertedRows = 0L;
+        long successRows = 0L;
+        long failedRows = 0L;
+
+        while (true) {
+            if (progressListener != null) {
+                if (progressListener.isStopRequested()) {
+                    saveCheckpoint(progressListener, request.getCheckpointKey(), offset);
+                    throw new SyncTaskStoppedException("Full sync stopped");
+                }
+                if (progressListener.isPauseRequested()) {
+                    saveCheckpoint(progressListener, request.getCheckpointKey(), offset);
+                    throw new SyncTaskPausedException("Full sync paused");
+                }
+            }
+            List<Object[]> rows = loadRows(sourceConnection, selectSql, columns, request.getPageSize(), offset);
+            if (rows.isEmpty()) {
+                break;
+            }
+
+            try (PreparedStatement statement = targetConnection.prepareStatement(insertSql)) {
+                int batchCounter = 0;
+                for (Object[] row : rows) {
+                    bindRow(statement, row);
+                    statement.addBatch();
+                    insertedRows++;
+                    batchCounter++;
+                    if (batchCounter >= request.getBatchSize()) {
+                        statement.executeBatch();
+                        batchCounter = 0;
+                    }
+                }
+                if (batchCounter > 0) {
+                    statement.executeBatch();
+                }
+            }
+            offset += request.getPageSize();
+            successRows = insertedRows;
+
+            if (progressListener != null) {
+                long elapsed = System.currentTimeMillis() - startTime;
+                double speed = elapsed <= 0L ? 0.0d : (successRows * 1000.0d) / elapsed;
+                long remaining = totalRowCount > 0L ? totalRowCount - successRows : 0L;
+                progressListener.updateProgress(totalRowCount, successRows, successRows, failedRows, speed,
+                        Long.valueOf(startTime), null, Long.valueOf(elapsed), "Copied " + successRows + " rows, remaining " + remaining);
+            }
+        }
+
+        return insertedRows;
+    }
+
+    private void saveCheckpoint(SyncTaskProgressListener progressListener, String checkpointKey, long offset) {
+        if (progressListener == null || checkpointKey == null || checkpointKey.trim().length() == 0) {
+            return;
+        }
+        progressListener.saveCheckpoint(checkpointKey, String.valueOf(offset));
+    }
+
+    private long countRows(Connection sourceConnection, TableMetadata sourceTable) throws SQLException {
+        String sql = "SELECT COUNT(1) FROM " + qualifiedTableName(sourceTable.getSchemaName(), sourceTable.getTableName());
+        try (Statement statement = sourceConnection.createStatement();
+             ResultSet resultSet = statement.executeQuery(sql)) {
+            if (resultSet.next()) {
+                return resultSet.getLong(1);
+            }
+            return 0L;
+        }
+    }
+
+    private long parseCheckpointValue(String checkpointValue) {
+        if (checkpointValue == null || checkpointValue.trim().length() == 0) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(checkpointValue.trim());
+        } catch (NumberFormatException ex) {
+            return 0L;
+        }
+    }
+
+    private List<Object[]> loadRows(Connection sourceConnection, String selectSql, List<ColumnMetadata> columns, int pageSize, long offset)
+            throws SQLException {
+        List<Object[]> rows = new ArrayList<Object[]>();
+        try (PreparedStatement statement = sourceConnection.prepareStatement(selectSql)) {
+            statement.setInt(1, pageSize);
+            statement.setLong(2, offset);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    Object[] row = new Object[columns.size()];
+                    for (int i = 0; i < columns.size(); i++) {
+                        row[i] = resultSet.getObject(i + 1);
+                    }
+                    rows.add(row);
+                }
+            }
+        }
+        return rows;
+    }
+
+    private void bindRow(PreparedStatement statement, Object[] row) throws SQLException {
+        for (int i = 0; i < row.length; i++) {
+            statement.setObject(i + 1, row[i]);
+        }
+    }
+
+    private String buildSelectSql(TableMetadata sourceTable, int pageSize) {
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT ");
+        List<ColumnMetadata> columns = sourceTable.getColumns();
+        for (int i = 0; i < columns.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append(quoteIdentifier(columns.get(i).getName()));
+        }
+        sql.append(" FROM ").append(qualifiedTableName(sourceTable.getSchemaName(), sourceTable.getTableName()));
+        sql.append(" ORDER BY ").append(buildOrderByClause(columns));
+        sql.append(" LIMIT ? OFFSET ?");
+        return sql.toString();
+    }
+
+    private String buildInsertSql(TableMetadata targetTable) {
+        StringBuilder sql = new StringBuilder();
+        sql.append("INSERT INTO ").append(qualifiedTableName(targetTable.getSchemaName(), targetTable.getTableName())).append(" (");
+        List<ColumnMetadata> columns = targetTable.getColumns();
+        for (int i = 0; i < columns.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append(quoteIdentifier(columns.get(i).getName()));
+        }
+        sql.append(") VALUES (");
+        for (int i = 0; i < columns.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append("?");
+        }
+        sql.append(")");
+        return sql.toString();
+    }
+
+    private String buildCreateTableSql(Connection connection, TableMetadata tableMetadata) throws SQLException {
+        StringBuilder sql = new StringBuilder();
+        sql.append("CREATE TABLE ").append(qualifiedTableName(tableMetadata.getSchemaName(), tableMetadata.getTableName())).append(" (");
+        List<ColumnMetadata> columns = tableMetadata.getColumns();
+        for (int i = 0; i < columns.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append(quoteIdentifier(columns.get(i).getName()))
+                    .append(" ")
+                    .append(resolveColumnDefinition(columns.get(i)));
+            if (!columns.get(i).isNullable()) {
+                sql.append(" NOT NULL");
+            }
+        }
+
+        List<ColumnMetadata> primaryKeyColumns = new ArrayList<ColumnMetadata>();
+        for (ColumnMetadata columnMetadata : columns) {
+            if (columnMetadata.isPrimaryKey()) {
+                primaryKeyColumns.add(columnMetadata);
+            }
+        }
+        if (!primaryKeyColumns.isEmpty()) {
+            sql.append(", PRIMARY KEY (");
+            for (int i = 0; i < primaryKeyColumns.size(); i++) {
+                if (i > 0) {
+                    sql.append(", ");
+                }
+                sql.append(quoteIdentifier(primaryKeyColumns.get(i).getName()));
+            }
+            sql.append(")");
+        }
+        sql.append(")");
+        return sql.toString();
+    }
+
+    private String resolveColumnDefinition(ColumnMetadata columnMetadata) {
+        String dataType = columnMetadata.getDataType();
+        if (dataType == null || dataType.trim().length() == 0) {
+            return "VARCHAR(255)";
+        }
+
+        String upperCaseDataType = dataType.toUpperCase();
+        if (isVariableLengthType(upperCaseDataType)) {
+            Integer size = columnMetadata.getColumnSize();
+            if (size != null && size.intValue() > 0) {
+                return upperCaseDataType + "(" + size + ")";
+            }
+            return upperCaseDataType + "(255)";
+        }
+
+        if (isDecimalType(upperCaseDataType)) {
+            Integer size = columnMetadata.getColumnSize();
+            Integer decimalDigits = columnMetadata.getDecimalDigits();
+            if (size != null && size.intValue() > 0 && decimalDigits != null && decimalDigits.intValue() >= 0) {
+                return upperCaseDataType + "(" + size + "," + decimalDigits + ")";
+            }
+            if (size != null && size.intValue() > 0) {
+                return upperCaseDataType + "(" + size + ")";
+            }
+        }
+
+        return upperCaseDataType;
+    }
+
+    private boolean isVariableLengthType(String dataType) {
+        return "CHAR".equals(dataType)
+                || "VARCHAR".equals(dataType)
+                || "CHARACTER".equals(dataType)
+                || "CHARACTER VARYING".equals(dataType)
+                || "NCHAR".equals(dataType)
+                || "NVARCHAR".equals(dataType)
+                || "LONGVARCHAR".equals(dataType)
+                || "TEXT".equals(dataType)
+                || "CLOB".equals(dataType);
+    }
+
+    private boolean isDecimalType(String dataType) {
+        return "DECIMAL".equals(dataType)
+                || "NUMERIC".equals(dataType)
+                || "NUMBER".equals(dataType);
+    }
+
+    private String buildOrderByClause(List<ColumnMetadata> columns) {
+        for (ColumnMetadata columnMetadata : columns) {
+            if (columnMetadata.isPrimaryKey()) {
+                return quoteIdentifier(columnMetadata.getName());
+            }
+        }
+        if (columns.isEmpty()) {
+            return "1";
+        }
+        return quoteIdentifier(columns.get(0).getName());
+    }
+
+    private String quoteIdentifier(String identifier) {
+        return identifier;
+    }
+
+    private String qualifiedTableName(String schemaName, String tableName) {
+        if (schemaName == null || schemaName.trim().length() == 0 || "default".equalsIgnoreCase(schemaName)) {
+            return quoteIdentifier(tableName);
+        }
+        return quoteIdentifier(schemaName) + "." + quoteIdentifier(tableName);
+    }
+
+    private String normalizeSchemaName(String schemaName) {
+        if (schemaName == null || schemaName.trim().length() == 0) {
+            return null;
+        }
+        return schemaName.trim();
+    }
+}
