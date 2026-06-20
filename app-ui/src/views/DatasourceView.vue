@@ -46,6 +46,14 @@
             </template>
           </el-table-column>
         </el-table>
+        <StateEmpty
+          v-if="!loading && !datasources.length"
+          title="还没有数据源"
+          description="先创建一个数据库连接，后面的扫描、任务和日志才有基础。"
+          hint="建议先新建 MySQL、PostgreSQL 或 DM 数据源，然后点击测试连接。"
+          button-text="新建数据源"
+          @action="openCreateDialog"
+        />
       </div>
     </div>
 
@@ -118,6 +126,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteDatasource, listDatasources, saveDatasource, testDatasourceConnection } from '../services/backend'
+import StateEmpty from '../components/StateEmpty.vue'
 
 const loading = ref(false)
 const saving = ref(false)

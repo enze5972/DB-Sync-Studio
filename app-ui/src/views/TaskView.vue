@@ -111,6 +111,14 @@
               </template>
             </el-table-column>
           </el-table>
+          <StateEmpty
+            v-if="!loading && !tasks.length"
+            title="还没有同步任务"
+            description="先创建一个同步任务，把源表和目标表连接起来。"
+            hint="任务创建后，可以继续配置字段映射、执行同步和查看日志。"
+            button-text="新建任务"
+            @action="openCreateDialog"
+          />
         </div>
       </div>
 
@@ -427,6 +435,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteTask, deleteTaskTable, listDatasources, listTaskLogs, listTaskTables, listTasks, pauseTask, resumeTask, saveTask, saveTaskTable, startTask, stopTask, scanMetadata } from '../services/backend'
 import CreatableSelect from '../components/CreatableSelect.vue'
+import StateEmpty from '../components/StateEmpty.vue'
 
 const router = useRouter()
 const loading = ref(false)

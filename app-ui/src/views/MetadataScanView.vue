@@ -66,6 +66,14 @@
             </span>
           </template>
         </el-tree>
+        <StateEmpty
+          v-if="!scanning && !treeData.length"
+          title="还没有扫描结果"
+          description="先选择一个数据源并执行表结构扫描。"
+          hint="扫描完成后这里会显示 schema、table 和字段层级。"
+          button-text="去选数据源"
+          @action="goToDatasource"
+        />
       </div>
 
       <div class="panel-card glass-panel">
@@ -119,6 +127,14 @@
             </el-table-column>
             <el-table-column prop="defaultValue" label="默认值" min-width="160" />
           </el-table>
+          <StateEmpty
+            v-if="!scanning && !selectedColumns.length"
+            title="还没有字段详情"
+            description="扫描一个表后，这里会显示字段、主键和默认值。"
+            hint="先在左侧树中选择 table，或者重新扫描数据源。"
+            button-text="重新扫描"
+            @action="runScan"
+          />
         </div>
       </div>
     </div>
@@ -130,6 +146,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listDatasources, scanMetadata } from '../services/backend'
+import StateEmpty from '../components/StateEmpty.vue'
 
 const router = useRouter()
 const datasources = ref([])
@@ -268,6 +285,10 @@ function openDataPreview() {
       tableName: selectedTable.value.tableName || ''
     }
   })
+}
+
+function goToDatasource() {
+  router.push('/datasource')
 }
 
 function openSchemaCompare() {

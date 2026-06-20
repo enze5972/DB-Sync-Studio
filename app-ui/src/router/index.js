@@ -1,5 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import DashboardView from '../views/DashboardView.vue'
+import WelcomeView from '../views/WelcomeView.vue'
+import HelpView from '../views/HelpView.vue'
 import DatasourceView from '../views/DatasourceView.vue'
 import TaskView from '../views/TaskView.vue'
 import FieldMappingView from '../views/FieldMappingView.vue'
@@ -16,103 +18,147 @@ import TaskRunDetailView from '../views/TaskRunDetailView.vue'
 import RunMonitoringView from '../views/RunMonitoringView.vue'
 import AlertSettingsView from '../views/AlertSettingsView.vue'
 import AlertHistoryView from '../views/AlertHistoryView.vue'
+import AboutView from '../views/AboutView.vue'
 import ComingSoonView from '../views/ComingSoonView.vue'
+import LicenseView from '../views/LicenseView.vue'
+import SettingsView from '../views/SettingsView.vue'
+import MainLayout from '../layouts/MainLayout.vue'
+import { readFirstLaunchCompleted, shouldRedirectToWelcome } from '../services/onboardingState'
 
 const routes = [
   {
     path: '/',
-    name: 'dashboard',
-    component: DashboardView
+    component: MainLayout,
+    beforeEnter: async function (to, from, next) {
+      const firstLaunchCompleted = await readFirstLaunchCompleted()
+      if (shouldRedirectToWelcome(firstLaunchCompleted, to.path)) {
+        next('/welcome')
+        return
+      }
+      next()
+    },
+    children: [
+      {
+        path: '',
+        name: 'dashboard',
+        component: DashboardView
+      },
+      {
+        path: 'datasource',
+        name: 'datasource',
+        component: DatasourceView
+      },
+      {
+        path: 'tasks',
+        name: 'tasks',
+        component: TaskView
+      },
+      {
+        path: 'task-wizard',
+        name: 'task-wizard',
+        component: TaskWizardView
+      },
+      {
+        path: 'mapping',
+        name: 'mapping',
+        component: FieldMappingView
+      },
+      {
+        path: 'metadata',
+        name: 'metadata',
+        component: MetadataScanView
+      },
+      {
+        path: 'preview',
+        name: 'preview',
+        component: DataPreviewView
+      },
+      {
+        path: 'sql',
+        name: 'sql',
+        component: SqlEditorView
+      },
+      {
+        path: 'schema-compare',
+        name: 'schema-compare',
+        component: SchemaCompareView
+      },
+      {
+        path: 'logs',
+        name: 'logs',
+        component: LogsView
+      },
+      {
+        path: 'validation',
+        name: 'validation',
+        component: DataValidationView
+      },
+      {
+        path: 'execution-history',
+        name: 'execution-history',
+        component: ExecutionHistoryView
+      },
+      {
+        path: 'run-monitoring',
+        name: 'run-monitoring',
+        component: RunMonitoringView
+      },
+      {
+        path: 'alert-settings',
+        name: 'alert-settings',
+        component: AlertSettingsView
+      },
+      {
+        path: 'alert-history',
+        name: 'alert-history',
+        component: AlertHistoryView
+      },
+      {
+        path: 'execution-history/detail',
+        name: 'execution-history-detail',
+        component: TaskRunDetailView
+      },
+      {
+        path: 'task-run',
+        name: 'task-run',
+        component: TaskRunDetailView
+      },
+      {
+        path: 'schedule-center',
+        name: 'schedule-center',
+        component: ScheduleCenterView
+      },
+      {
+        path: 'settings',
+        name: 'settings',
+        component: SettingsView
+      },
+      {
+        path: 'license',
+        name: 'license',
+        component: LicenseView
+      }
+    ]
   },
   {
-    path: '/datasource',
-    name: 'datasource',
-    component: DatasourceView
+    path: '/welcome',
+    name: 'welcome',
+    component: WelcomeView
   },
   {
-    path: '/tasks',
-    name: 'tasks',
-    component: TaskView
+    path: '/help',
+    name: 'help',
+    component: HelpView
   },
   {
-    path: '/task-wizard',
-    name: 'task-wizard',
-    component: TaskWizardView
+    path: '/about',
+    name: 'about',
+    component: AboutView
   },
   {
-    path: '/mapping',
-    name: 'mapping',
-    component: FieldMappingView
-  },
-  {
-    path: '/metadata',
-    name: 'metadata',
-    component: MetadataScanView
-  },
-  {
-    path: '/preview',
-    name: 'preview',
-    component: DataPreviewView
-  },
-  {
-    path: '/sql',
-    name: 'sql',
-    component: SqlEditorView
-  },
-  {
-    path: '/schema-compare',
-    name: 'schema-compare',
-    component: SchemaCompareView
-  },
-  {
-    path: '/logs',
-    name: 'logs',
-    component: LogsView
-  },
-  {
-    path: '/validation',
-    name: 'validation',
-    component: DataValidationView
-  },
-  {
-    path: '/execution-history',
-    name: 'execution-history',
-    component: ExecutionHistoryView
-  },
-  {
-    path: '/run-monitoring',
-    name: 'run-monitoring',
-    component: RunMonitoringView
-  },
-  {
-    path: '/alert-settings',
-    name: 'alert-settings',
-    component: AlertSettingsView
-  },
-  {
-    path: '/alert-history',
-    name: 'alert-history',
-    component: AlertHistoryView
-  },
-  {
-    path: '/execution-history/detail',
-    name: 'execution-history-detail',
-    component: TaskRunDetailView
-  },
-  {
-    path: '/task-run',
-    name: 'task-run',
-    component: TaskRunDetailView
-  },
-  {
-    path: '/schedule-center',
-    name: 'schedule-center',
-    component: ScheduleCenterView
-  },
-  {
-    path: '/settings',
-    name: 'settings',
-    component: ComingSoonView
+    path: '/license',
+    name: 'license-page',
+    component: LicenseView
   }
 ]
 

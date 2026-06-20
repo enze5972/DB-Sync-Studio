@@ -16,6 +16,7 @@
           <el-button round @click="goTo('/metadata')">表结构扫描</el-button>
           <el-button round @click="goTo('/tasks')">创建同步任务</el-button>
           <el-button round @click="goTo('/logs')">查看执行日志</el-button>
+          <el-button round @click="goTo('/help')">快速开始</el-button>
         </div>
       </div>
 

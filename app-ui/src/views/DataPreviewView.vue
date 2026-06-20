@@ -164,14 +164,6 @@
             show-icon
             :closable="false"
           />
-          <el-empty
-            v-else-if="!hasQueried"
-            description="请选择数据源和表名后查询预览"
-          />
-          <el-empty
-            v-else-if="!result.columns.length || !result.rows.length"
-            description="当前查询没有返回记录"
-          />
           <el-table v-else :data="result.rows" border stripe>
             <el-table-column
               v-for="column in result.columns"
@@ -182,6 +174,22 @@
               show-overflow-tooltip
             />
           </el-table>
+          <StateEmpty
+            v-if="!loading && !previewError && !hasQueried"
+            title="还没有开始预览"
+            description="先选择数据源和表名，再点击查询。"
+            hint="预览会显示前 100 条记录，并支持分页和过滤。"
+            button-text="返回表结构"
+            @action="goBack"
+          />
+          <StateEmpty
+            v-else-if="!loading && !previewError && hasQueried && (!result.columns.length || !result.rows.length)"
+            title="没有查询到记录"
+            description="当前表在这个条件下没有返回数据。"
+            hint="你可以修改筛选条件、页大小或排序字段再试一次。"
+            button-text="返回表结构"
+            @action="goBack"
+          />
         </div>
 
         <div class="preview-pagination">
@@ -206,6 +214,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listDatasources, previewTableData, scanMetadata } from '../services/backend'
 import CreatableSelect from '../components/CreatableSelect.vue'
+import StateEmpty from '../components/StateEmpty.vue'
 
 const router = useRouter()
 const route = useRoute()

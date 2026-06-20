@@ -83,6 +83,14 @@
               </template>
             </el-table-column>
           </el-table>
+          <StateEmpty
+            v-if="!loading && !rules.length"
+            title="还没有告警规则"
+            description="先创建一个规则，才能按任务或表触发告警。"
+            hint="建议先去帮助文档看一下告警配置流程。"
+            button-text="新增规则"
+            @action="openRuleDialog()"
+          />
         </div>
       </div>
 
@@ -135,6 +143,14 @@
               </template>
             </el-table-column>
           </el-table>
+          <StateEmpty
+            v-if="!loading && !channels.length"
+            title="还没有告警渠道"
+            description="先配置一个 SMTP 或 Webhook 渠道，规则才能发送通知。"
+            hint="渠道保存后可以立即测试发送。"
+            button-text="新增渠道"
+            @action="openChannelDialog()"
+          />
         </div>
       </div>
     </div>
@@ -284,6 +300,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   deleteAlertChannel,
@@ -295,7 +312,9 @@ import {
   saveAlertRule,
   testAlertChannel
 } from '../services/backend'
+import StateEmpty from '../components/StateEmpty.vue'
 
+const router = useRouter()
 const loading = ref(false)
 const savingRule = ref(false)
 const savingChannel = ref(false)

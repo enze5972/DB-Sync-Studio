@@ -142,6 +142,14 @@
               </template>
             </el-table-column>
           </el-table>
+          <StateEmpty
+            v-if="!validationRuns.length"
+            title="还没有校验记录"
+            description="先选择任务并执行一次校验。"
+            hint="这里会记录校验状态、源/目标行数和差异统计。"
+            button-text="开始校验"
+            @action="runValidation"
+          />
         </div>
       </div>
     </div>
@@ -163,6 +171,14 @@
             <el-table-column prop="targetRowJson" label="目标行" min-width="240" show-overflow-tooltip />
             <el-table-column prop="suggestedRepairType" label="建议修复" width="160" />
           </el-table>
+          <StateEmpty
+            v-if="!validationDifferences.length"
+            title="还没有差异记录"
+            description="校验完成后，这里才会列出不一致、缺失和异常项。"
+            hint="可以先运行校验，再生成修复方案。"
+            button-text="开始校验"
+            @action="runValidation"
+          />
         </div>
       </div>
 
@@ -184,6 +200,14 @@
               </template>
             </el-table-column>
           </el-table>
+          <StateEmpty
+            v-if="!repairRuns.length"
+            title="还没有修复记录"
+            description="生成并执行修复后，这里会展示修复批次。"
+            hint="修复历史会记录类型、状态、数量和耗时。"
+            button-text="生成修复方案"
+            @action="loadRepairPreview"
+          />
         </div>
       </div>
     </div>
@@ -227,6 +251,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listRepairRuns, listTasks, listValidationDifferences, listValidationRuns, runRepair, runValidation as executeValidation } from '../services/backend'
+import StateEmpty from '../components/StateEmpty.vue'
 
 const tasks = ref([])
 const validationRuns = ref([])

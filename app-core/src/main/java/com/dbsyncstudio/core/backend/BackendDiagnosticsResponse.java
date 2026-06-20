@@ -3,6 +3,7 @@ package com.dbsyncstudio.core.backend;
 public class BackendDiagnosticsResponse {
 
     private String applicationDirectory;
+    private String logsDirectory;
     private String databaseFilePath;
     private long generatedAt;
     private int schemaVersion;
@@ -27,6 +28,14 @@ public class BackendDiagnosticsResponse {
 
     public void setDatabaseFilePath(String databaseFilePath) {
         this.databaseFilePath = databaseFilePath;
+    }
+
+    public String getLogsDirectory() {
+        return logsDirectory;
+    }
+
+    public void setLogsDirectory(String logsDirectory) {
+        this.logsDirectory = logsDirectory;
     }
 
     public long getGeneratedAt() {

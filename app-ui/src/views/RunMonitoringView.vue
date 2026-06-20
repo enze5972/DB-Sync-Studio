@@ -54,6 +54,14 @@
             </g>
           </svg>
           <el-empty v-else description="暂无趋势数据" />
+          <StateEmpty
+            v-if="!trendChart.points.length"
+            title="还没有监控趋势"
+            description="先执行一次同步任务，或等待定时任务产生指标。"
+            hint="运行监控会展示任务趋势、失败任务、连接状态和最近指标。"
+            button-text="去执行历史"
+            @action="goToExecutionHistory"
+          />
         </div>
         <div class="monitor-legend">
           <span class="monitor-legend__item">
@@ -157,6 +165,7 @@ import {
   listDatasources,
   testDatasourceConnection
 } from '../services/backend'
+import StateEmpty from '../components/StateEmpty.vue'
 
 const router = useRouter()
 const loading = ref(false)

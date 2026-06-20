@@ -125,7 +125,14 @@
               </template>
             </el-table-column>
           </el-table>
-          <el-empty v-if="!loading && !detail.tableRuns.length" description="暂无表级进度数据" />
+          <StateEmpty
+            v-if="!loading && !detail.tableRuns.length"
+            title="还没有表级进度"
+            description="这个 run 还没有写入表级执行结果，或者执行还没开始。"
+            hint="表级进度会展示每张表的状态、耗时、断点和错误。"
+            button-text="返回历史"
+            @action="goBack"
+          />
         </div>
       </div>
 
@@ -157,7 +164,14 @@
             <el-table-column prop="logLevel" label="级别" width="120" />
             <el-table-column prop="logMessage" label="日志内容" min-width="440" />
           </el-table>
-          <el-empty v-if="!loading && !logs.length" description="暂无匹配的日志" />
+          <StateEmpty
+            v-if="!loading && !logs.length"
+            title="还没有关联日志"
+            description="当前 run 没有匹配的日志记录。"
+            hint="你可以切换到执行历史或同步任务页面查看更多上下文。"
+            button-text="查看日志页"
+            @action="goToLogs"
+          />
         </div>
       </div>
     </div>
@@ -169,6 +183,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getTaskRun, listTaskRunLogs } from '../services/backend'
+import StateEmpty from '../components/StateEmpty.vue'
 
 const route = useRoute()
 const router = useRouter()

@@ -46,12 +46,29 @@ async function apiRequest(path, options) {
   }
 
   if (!response.ok || (body && body.success === false)) {
-    const message = body && body.message
-      ? body.message
-      : (response.status ? ('Request failed: ' + response.status + ' ' + response.statusText) : '请求失败')
+    const message = normalizeErrorMessage(body, response)
     throw new Error(message)
   }
   return body ? body.data : null
+}
+
+function normalizeErrorMessage(body, response) {
+  const userMessage = body && typeof body.message === 'string' && body.message.trim().length > 0
+    ? body.message.trim()
+    : ''
+  if (userMessage) {
+    return userMessage
+  }
+  const detail = body && typeof body.detail === 'string' && body.detail.trim().length > 0
+    ? body.detail.trim()
+    : ''
+  if (detail) {
+    return detail
+  }
+  if (response && response.status) {
+    return '请求失败（' + response.status + '）'
+  }
+  return '请求失败，请稍后重试'
 }
 
 function buildQueryString(params) {
@@ -226,6 +243,41 @@ export async function cleanupMonitoringMetrics(payload) {
 
 export async function getDiagnosticsStatus() {
   return apiRequest('/api/diagnostics')
+}
+
+export async function getAppSettings() {
+  return apiRequest('/api/app-settings')
+}
+
+export async function saveAppSettings(payload) {
+  return apiRequest('/api/app-settings', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export async function getLicenseInfo() {
+  return apiRequest('/api/license')
+}
+
+export async function activateLicense(payload) {
+  return apiRequest('/api/license', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export async function clearLicense() {
+  return apiRequest('/api/license', {
+    method: 'DELETE'
+  })
+}
+
+export async function checkForUpdate(payload) {
+  return apiRequest('/api/updates/check', {
+    method: 'POST',
+    body: JSON.stringify(payload || {})
+  })
 }
 
 export async function listTaskRunsForMonitoring(limitPerTask) {

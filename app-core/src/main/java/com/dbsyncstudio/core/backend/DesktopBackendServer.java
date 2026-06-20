@@ -32,6 +32,9 @@ import com.dbsyncstudio.model.validation.ValidationMode;
 import com.dbsyncstudio.model.validation.ValidationRequest;
 import com.dbsyncstudio.model.validation.ValidationResult;
 import com.dbsyncstudio.model.validation.ValidationRun;
+import com.dbsyncstudio.model.settings.AppSettings;
+import com.dbsyncstudio.model.settings.AppLicenseRequest;
+import com.dbsyncstudio.core.backend.AppUpdateCheckRequest;
 import com.dbsyncstudio.core.scheduler.TaskSchedulerService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,6 +56,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -60,6 +65,9 @@ public class DesktopBackendServer {
 
     private static final Logger LOGGER = Logger.getLogger(DesktopBackendServer.class.getName());
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final Pattern TASK_ID_PATTERN = Pattern.compile("^/api/tasks/(\\d+)(?:/.*)?$");
+    private static final Pattern VALIDATION_PARENT_ID_PATTERN = Pattern.compile("^/api/validation/(\\d+)(?:/.*)?$");
+    private static final Pattern REPAIR_RUN_ID_PATTERN = Pattern.compile("^/api/validation/\\d+/repairs/(\\d+)/details$");
 
     private final DesktopBackendService backendService;
     private TaskSchedulerService taskSchedulerService;
@@ -104,6 +112,48 @@ public class DesktopBackendServer {
             @Override
             protected Object process(HttpExchange exchange) throws Exception {
                 return backendService.dashboardStats();
+            }
+        });
+
+        httpServer.createContext("/api/app-settings", new JsonHandler() {
+            @Override
+            protected Object process(HttpExchange exchange) throws Exception {
+                if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    return backendService.loadAppSettingsResponse();
+                }
+                if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    AppSettings settings = readBody(exchange, AppSettings.class);
+                    return backendService.saveAppSettings(settings);
+                }
+                throw methodNotAllowed();
+            }
+        });
+
+        httpServer.createContext("/api/license", new JsonHandler() {
+            @Override
+            protected Object process(HttpExchange exchange) throws Exception {
+                if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    return backendService.loadLicenseInfo();
+                }
+                if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    AppLicenseRequest request = readBody(exchange, AppLicenseRequest.class);
+                    return backendService.activateLicense(request == null ? null : request.getLicenseKey());
+                }
+                if ("DELETE".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    return backendService.clearLicense();
+                }
+                throw methodNotAllowed();
+            }
+        });
+
+        httpServer.createContext("/api/updates/check", new JsonHandler() {
+            @Override
+            protected Object process(HttpExchange exchange) throws Exception {
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    throw methodNotAllowed();
+                }
+                readBody(exchange, AppUpdateCheckRequest.class);
+                return backendService.checkForUpdate();
             }
         });
 
@@ -751,7 +801,7 @@ public class DesktopBackendServer {
                 writeJson(exchange, ex.statusCode, wrapError(ex.getMessage()));
             } catch (Exception ex) {
                 LOGGER.log(Level.SEVERE, "API request failed", ex);
-                writeJson(exchange, 500, wrapError(ex.getMessage()));
+                writeJson(exchange, 500, wrapError(resolveUserMessage(ex)));
             } finally {
                 exchange.close();
             }
@@ -841,18 +891,15 @@ public class DesktopBackendServer {
     }
 
     private long extractTaskId(String path) {
-        String[] segments = path.split("/");
-        return Long.parseLong(segments[3]);
+        return extractPatternGroup(path, TASK_ID_PATTERN, 1);
     }
 
     private long extractTailParentId(String path) {
-        String[] segments = path.split("/");
-        return Long.parseLong(segments[3]);
+        return extractPatternGroup(path, VALIDATION_PARENT_ID_PATTERN, 1);
     }
 
     private long extractRepairRunId(String path) {
-        String[] segments = path.split("/");
-        return Long.parseLong(segments[5]);
+        return extractPatternGroup(path, REPAIR_RUN_ID_PATTERN, 1);
     }
 
     private String extractRunId(String path) {
@@ -897,6 +944,31 @@ public class DesktopBackendServer {
 
     private HttpError notFound() {
         return new HttpError(404, "Not found");
+    }
+
+    private long extractPatternGroup(String input, Pattern pattern, int groupIndex) {
+        Matcher matcher = pattern.matcher(input);
+        if (!matcher.matches()) {
+            throw new HttpError(400, "请求参数不正确");
+        }
+        return Long.parseLong(matcher.group(groupIndex));
+    }
+
+    private String resolveUserMessage(Exception ex) {
+        if (ex == null) {
+            return "请求失败，请稍后重试";
+        }
+        if (ex instanceof HttpError) {
+            return ex.getMessage();
+        }
+        String message = ex.getMessage();
+        if (message == null || message.trim().length() == 0) {
+            return "请求失败，请稍后重试";
+        }
+        if (message.indexOf("null") >= 0 && message.trim().length() <= 10) {
+            return "请求失败，请稍后重试";
+        }
+        return message;
     }
 
     private static class HttpError extends RuntimeException {

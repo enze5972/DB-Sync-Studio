@@ -91,9 +91,11 @@ import com.dbsyncstudio.model.sql.SqlExecutionLogEntry;
 import com.dbsyncstudio.model.sql.SqlExecutionLogRepository;
 import com.dbsyncstudio.model.sql.SqlExecutionRequest;
 import com.dbsyncstudio.model.sql.SqlExecutionResult;
+import com.dbsyncstudio.core.backend.AppSettingsResponse;
 import com.dbsyncstudio.store.sqlite.SqliteConnectionFactory;
 import com.dbsyncstudio.store.sqlite.LocalSecretCryptoService;
 import com.dbsyncstudio.store.sqlite.LocalSecretKeyProvider;
+import com.dbsyncstudio.store.sqlite.SqliteAppSettingsRepository;
 import com.dbsyncstudio.store.sqlite.SqliteDatasourceRepository;
 import com.dbsyncstudio.store.sqlite.SqliteFieldMappingRepository;
 import com.dbsyncstudio.store.sqlite.SqliteAlertChannelRepository;
@@ -115,6 +117,11 @@ import com.dbsyncstudio.store.sync.SqliteExecutionLogRepository;
 import com.dbsyncstudio.store.sqlite.SqliteIncrementalSyncCheckpointRepository;
 import com.dbsyncstudio.store.sync.SqliteSyncCheckpointRepository;
 import com.dbsyncstudio.store.sqlite.SqliteDatabasePaths;
+import com.dbsyncstudio.model.settings.AppSettings;
+import com.dbsyncstudio.model.settings.AppSettingsRepository;
+import com.dbsyncstudio.model.settings.AppBuildInfo;
+import com.dbsyncstudio.model.settings.AppLicenseInfo;
+import com.dbsyncstudio.model.settings.AppUpdateCheckResult;
 
 import java.io.File;
 import java.sql.Connection;
@@ -168,6 +175,7 @@ public class DesktopBackendService {
     private final SqliteAlertChannelRepository alertChannelRepository;
     private final SqliteAlertHistoryRepository alertHistoryRepository;
     private final SqliteAlertDedupStateRepository alertDedupStateRepository;
+    private final SqliteAppSettingsRepository appSettingsRepository;
     private final LocalSecretCryptoService alertCryptoService;
     private final AlertSenderService alertSenderService;
     private final DatabaseMetadataScanner metadataScanner;
@@ -182,6 +190,14 @@ public class DesktopBackendService {
     private final Map<Long, TaskExecutionState> taskExecutionStates;
     private SqliteConnectionFactory connectionFactory;
     private volatile int lastRecoveredTaskCount;
+    private volatile AppSettings cachedSettings;
+
+    private AppLicenseService licenseService() {
+        if (appSettingsRepository == null) {
+            return null;
+        }
+        return new AppLicenseService(appSettingsRepository, alertCryptoService);
+    }
 
     public DesktopBackendService(SqliteDatasourceRepository datasourceRepository,
                                  SqliteSyncTaskRepository syncTaskRepository,
@@ -202,6 +218,7 @@ public class DesktopBackendService {
                                  SqliteAlertChannelRepository alertChannelRepository,
                                  SqliteAlertHistoryRepository alertHistoryRepository,
                                  SqliteAlertDedupStateRepository alertDedupStateRepository,
+                                 SqliteAppSettingsRepository appSettingsRepository,
                                  LocalSecretCryptoService alertCryptoService,
                                  DatabaseMetadataScanner metadataScanner,
                                  DatasourceConnectionTester connectionTester,
@@ -230,6 +247,7 @@ public class DesktopBackendService {
         this.alertChannelRepository = alertChannelRepository;
         this.alertHistoryRepository = alertHistoryRepository;
         this.alertDedupStateRepository = alertDedupStateRepository;
+        this.appSettingsRepository = appSettingsRepository;
         this.alertCryptoService = alertCryptoService;
         this.alertSenderService = new AlertSenderService();
         this.metadataScanner = metadataScanner;
@@ -280,6 +298,7 @@ public class DesktopBackendService {
                 null,
                 null,
                 null,
+                null,
                 metadataScanner,
                 connectionTester,
                 fieldMappingSuggestionMatcher,
@@ -332,6 +351,7 @@ public class DesktopBackendService {
                 null,
                 null,
                 null,
+                null,
                 metadataScanner,
                 connectionTester,
                 fieldMappingSuggestionMatcher,
@@ -361,6 +381,7 @@ public class DesktopBackendService {
                                  SqliteAlertChannelRepository alertChannelRepository,
                                  SqliteAlertHistoryRepository alertHistoryRepository,
                                  SqliteAlertDedupStateRepository alertDedupStateRepository,
+                                 SqliteAppSettingsRepository appSettingsRepository,
                                  LocalSecretCryptoService alertCryptoService,
                                  DatabaseMetadataScanner metadataScanner,
                                  DatasourceConnectionTester connectionTester,
@@ -390,6 +411,7 @@ public class DesktopBackendService {
                 alertChannelRepository,
                 alertHistoryRepository,
                 alertDedupStateRepository,
+                appSettingsRepository,
                 alertCryptoService,
                 metadataScanner,
                 connectionTester,
@@ -445,6 +467,7 @@ public class DesktopBackendService {
         this.alertChannelRepository = null;
         this.alertHistoryRepository = null;
         this.alertDedupStateRepository = null;
+        this.appSettingsRepository = null;
         this.alertCryptoService = null;
         this.alertSenderService = new AlertSenderService();
         this.metadataScanner = metadataScanner;
@@ -479,6 +502,7 @@ public class DesktopBackendService {
         SqliteValidationRepository validationRepository = new SqliteValidationRepository(connectionFactory);
         SqliteRepairRepository repairRepository = new SqliteRepairRepository(connectionFactory);
         SqliteMonitoringRepository monitoringRepository = new SqliteMonitoringRepository(connectionFactory);
+        SqliteAppSettingsRepository appSettingsRepository = new SqliteAppSettingsRepository(connectionFactory);
         LocalSecretCryptoService alertCryptoService =
                 new LocalSecretCryptoService(new LocalSecretKeyProvider(SqliteDatabasePaths.defaultAlertSecretKeyFile()));
         SqliteAlertRuleRepository alertRuleRepository = new SqliteAlertRuleRepository(connectionFactory);
@@ -501,6 +525,7 @@ public class DesktopBackendService {
         validationRepository.initialize();
         repairRepository.initialize();
         monitoringRepository.initialize();
+        appSettingsRepository.initialize();
         alertRuleRepository.initialize();
         alertChannelRepository.initialize();
         alertHistoryRepository.initialize();
@@ -526,6 +551,7 @@ public class DesktopBackendService {
                 alertChannelRepository,
                 alertHistoryRepository,
                 alertDedupStateRepository,
+                appSettingsRepository,
                 alertCryptoService,
                 metadataScanner,
                 new JdbcDatasourceConnectionTester(),
@@ -810,26 +836,90 @@ public class DesktopBackendService {
     }
 
     public int getLogRetentionDays() {
-        SyncCheckpoint checkpoint = loadOrCreateCheckpoint(LOG_RETENTION_DAYS_KEY, String.valueOf(DEFAULT_LOG_RETENTION_DAYS));
-        String value = checkpoint.getCheckpointValue();
-        if (value == null || value.trim().length() == 0) {
-            return DEFAULT_LOG_RETENTION_DAYS;
-        }
-        try {
-            return Math.max(1, Integer.parseInt(value.trim()));
-        } catch (Exception ex) {
-            return DEFAULT_LOG_RETENTION_DAYS;
-        }
+        AppSettings settings = loadAppSettings();
+        Integer value = settings.getLogRetentionDays();
+        return value == null ? DEFAULT_LOG_RETENTION_DAYS : Math.max(1, value.intValue());
     }
 
     public int updateLogRetentionDays(int retentionDays) {
         int safeDays = Math.max(1, retentionDays);
-        SyncCheckpoint checkpoint = new SyncCheckpoint();
-        checkpoint.setCheckpointKey(LOG_RETENTION_DAYS_KEY);
-        checkpoint.setCheckpointValue(String.valueOf(safeDays));
-        checkpoint.setUpdatedAt(Long.valueOf(System.currentTimeMillis()));
-        checkpointRepository.save(checkpoint);
+        AppSettings settings = loadAppSettings();
+        settings.setLogRetentionDays(Integer.valueOf(safeDays));
+        saveAppSettings(settings);
         return safeDays;
+    }
+
+    public AppSettings loadAppSettings() {
+        if (appSettingsRepository == null) {
+            return defaultAppSettings();
+        }
+        if (cachedSettings == null) {
+            cachedSettings = mergeWithDefaults(appSettingsRepository.load());
+        }
+        return copySettings(cachedSettings);
+    }
+
+    public AppSettingsResponse loadAppSettingsResponse() {
+        AppSettings settings = loadAppSettings();
+        AppBuildInfo buildInfo = AppRuntimeInfo.buildInfo(com.dbsyncstudio.store.sqlite.SqliteSchemaInitializer.currentSchemaVersion(), readGitCommit());
+        AppSettingsResponse response = new AppSettingsResponse();
+        response.setBuildInfo(buildInfo);
+        response.setSettings(settings);
+        response.setApplicationDirectory(AppEnvironmentInfo.appDirectory().getAbsolutePath());
+        response.setLogsDirectory(AppEnvironmentInfo.logsDirectory().getAbsolutePath());
+        response.setDatabaseFilePath(connectionFactory == null || connectionFactory.getDatabaseFile() == null
+                ? null
+                : connectionFactory.getDatabaseFile().getAbsolutePath());
+        try {
+            response.setDatabaseUserVersion(readDatabaseUserVersion());
+            response.setMigrationEntryCount(readMigrationEntryCount());
+        } catch (SQLException ex) {
+            response.setDatabaseUserVersion(Integer.valueOf(-1));
+            response.setMigrationEntryCount(Integer.valueOf(-1));
+        }
+        response.setSchemaVersion(com.dbsyncstudio.store.sqlite.SqliteSchemaInitializer.currentSchemaVersion());
+        return response;
+    }
+
+    public AppSettings saveAppSettings(AppSettings settings) {
+        AppSettings merged = mergeWithDefaults(settings);
+        if (appSettingsRepository != null) {
+            appSettingsRepository.save(merged);
+        }
+        cachedSettings = copySettings(merged);
+        return copySettings(merged);
+    }
+
+    public AppLicenseInfo loadLicenseInfo() {
+        AppLicenseService service = licenseService();
+        if (service == null) {
+            return AppLicenseInfo.builder().message("未初始化").build();
+        }
+        return service.loadLicenseInfo();
+    }
+
+    public AppLicenseInfo activateLicense(String licenseKey) {
+        AppLicenseService service = licenseService();
+        if (service == null) {
+            return AppLicenseInfo.builder().message("未初始化").build();
+        }
+        return service.activateLicense(licenseKey);
+    }
+
+    public AppLicenseInfo clearLicense() {
+        AppLicenseService service = licenseService();
+        if (service == null) {
+            return AppLicenseInfo.builder().message("未初始化").build();
+        }
+        return service.clearLicense();
+    }
+
+    public AppUpdateCheckResult checkForUpdate() {
+        AppLicenseService service = licenseService();
+        if (service == null) {
+            return AppUpdateCheckResult.builder().message("未初始化").available(false).latest(false).build();
+        }
+        return service.checkForUpdate();
     }
 
     public LogCleanupSummary cleanupLogs(Integer retentionDays) throws SQLException {
@@ -2746,7 +2836,8 @@ public class DesktopBackendService {
     public BackendDiagnosticsResponse diagnosticsStatus() throws SQLException {
         BackendDiagnosticsResponse response = new BackendDiagnosticsResponse();
         response.setGeneratedAt(System.currentTimeMillis());
-        response.setApplicationDirectory(com.dbsyncstudio.store.sqlite.SqliteDatabasePaths.appDirectory().getAbsolutePath());
+        response.setApplicationDirectory(AppEnvironmentInfo.appDirectory().getAbsolutePath());
+        response.setLogsDirectory(AppEnvironmentInfo.logsDirectory().getAbsolutePath());
         response.setDatabaseFilePath(connectionFactory == null || connectionFactory.getDatabaseFile() == null
                 ? null
                 : connectionFactory.getDatabaseFile().getAbsolutePath());
@@ -2853,6 +2944,86 @@ public class DesktopBackendService {
         int safeRetentionDays = retentionDays == null || retentionDays.intValue() <= 0
                 ? DEFAULT_MONITORING_RETENTION_DAYS : retentionDays.intValue();
         return monitoringRepository.cleanupExpiredMetrics(safeRetentionDays, System.currentTimeMillis());
+    }
+
+    private AppSettings defaultAppSettings() {
+        return AppSettings.builder()
+                .logRetentionDays(Integer.valueOf(DEFAULT_LOG_RETENTION_DAYS))
+                .monitoringRetentionDays(Integer.valueOf(DEFAULT_MONITORING_RETENTION_DAYS))
+                .defaultPageSize(Integer.valueOf(100))
+                .defaultSyncBatchSize(Integer.valueOf(500))
+                .defaultMaxConcurrency(Integer.valueOf(4))
+                .updateSourceUrl("")
+                .allowDangerousSql(Boolean.FALSE)
+                .restartScheduledTasksOnStartup(Boolean.TRUE)
+                .autoCheckUpdatesOnStartup(Boolean.FALSE)
+                .onboardingGuideEnabled(Boolean.TRUE)
+                .build();
+    }
+
+    private AppSettings mergeWithDefaults(AppSettings settings) {
+        AppSettings defaults = defaultAppSettings();
+        if (settings == null) {
+            return defaults;
+        }
+        AppSettings merged = copySettings(settings);
+        if (merged.getLogRetentionDays() == null) {
+            merged.setLogRetentionDays(defaults.getLogRetentionDays());
+        }
+        if (merged.getMonitoringRetentionDays() == null) {
+            merged.setMonitoringRetentionDays(defaults.getMonitoringRetentionDays());
+        }
+        if (merged.getDefaultPageSize() == null) {
+            merged.setDefaultPageSize(defaults.getDefaultPageSize());
+        }
+        if (merged.getDefaultSyncBatchSize() == null) {
+            merged.setDefaultSyncBatchSize(defaults.getDefaultSyncBatchSize());
+        }
+        if (merged.getDefaultMaxConcurrency() == null) {
+            merged.setDefaultMaxConcurrency(defaults.getDefaultMaxConcurrency());
+        }
+        if (merged.getUpdateSourceUrl() == null) {
+            merged.setUpdateSourceUrl(defaults.getUpdateSourceUrl());
+        }
+        if (merged.getAllowDangerousSql() == null) {
+            merged.setAllowDangerousSql(defaults.getAllowDangerousSql());
+        }
+        if (merged.getRestartScheduledTasksOnStartup() == null) {
+            merged.setRestartScheduledTasksOnStartup(defaults.getRestartScheduledTasksOnStartup());
+        }
+        if (merged.getAutoCheckUpdatesOnStartup() == null) {
+            merged.setAutoCheckUpdatesOnStartup(defaults.getAutoCheckUpdatesOnStartup());
+        }
+        if (merged.getOnboardingGuideEnabled() == null) {
+            merged.setOnboardingGuideEnabled(defaults.getOnboardingGuideEnabled());
+        }
+        return merged;
+    }
+
+    private AppSettings copySettings(AppSettings settings) {
+        if (settings == null) {
+            return null;
+        }
+        return AppSettings.builder()
+                .logRetentionDays(settings.getLogRetentionDays())
+                .monitoringRetentionDays(settings.getMonitoringRetentionDays())
+                .defaultPageSize(settings.getDefaultPageSize())
+                .defaultSyncBatchSize(settings.getDefaultSyncBatchSize())
+                .defaultMaxConcurrency(settings.getDefaultMaxConcurrency())
+                .updateSourceUrl(settings.getUpdateSourceUrl())
+                .allowDangerousSql(settings.getAllowDangerousSql())
+                .restartScheduledTasksOnStartup(settings.getRestartScheduledTasksOnStartup())
+                .autoCheckUpdatesOnStartup(settings.getAutoCheckUpdatesOnStartup())
+                .onboardingGuideEnabled(settings.getOnboardingGuideEnabled())
+                .build();
+    }
+
+    private String readGitCommit() {
+        String value = System.getenv("GIT_COMMIT");
+        if (value == null || value.trim().length() == 0) {
+            return null;
+        }
+        return value.trim();
     }
 
     public List<FieldMappingRule> listFieldMappings(long taskId) throws SQLException {

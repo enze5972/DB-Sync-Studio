@@ -113,7 +113,14 @@
             </template>
           </el-table-column>
         </el-table>
-        <el-empty v-if="!loading && !history.length" :description="emptyDescription" />
+        <StateEmpty
+          v-if="!loading && !history.length"
+          title="还没有告警历史"
+          :description="emptyDescription"
+          hint="告警发送后会在这里记录时间、渠道、状态和内容。"
+          button-text="去告警设置"
+          @action="goToAlertSettings"
+        />
       </div>
     </div>
   </div>
@@ -121,9 +128,12 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listAlertHistory, listTasks } from '../services/backend'
+import StateEmpty from '../components/StateEmpty.vue'
 
+const router = useRouter()
 const loading = ref(false)
 const loadError = ref('')
 const tasks = ref([])
@@ -215,6 +225,10 @@ function resolveTaskName(taskId) {
     return item.id === taskId
   })
   return task ? task.taskName : (taskId || '-')
+}
+
+function goToAlertSettings() {
+  router.push('/alert-settings')
 }
 
 function alertLevelTagType(level) {

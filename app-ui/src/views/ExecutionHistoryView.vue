@@ -130,8 +130,15 @@
                 </el-space>
               </template>
             </el-table-column>
-            </el-table>
-          <el-empty v-if="!loading && filteredRuns.length === 0" description="暂无符合条件的 Run 记录" />
+          </el-table>
+          <StateEmpty
+            v-if="!loading && filteredRuns.length === 0"
+            title="还没有执行历史"
+            description="先执行一次同步任务，这里就会出现 run 记录。"
+            hint="执行历史会把 run_id、状态、表数、行数和耗时串起来。"
+            button-text="去同步任务"
+            @action="goToTasks"
+          />
         </div>
       </div>
 
@@ -179,6 +186,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getLogRetentionDays, listTaskRuns, listTasks } from '../services/backend'
+import StateEmpty from '../components/StateEmpty.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -379,6 +387,10 @@ function openLatestRun() {
 
 function goToLogs() {
   router.push('/logs')
+}
+
+function goToTasks() {
+  router.push('/tasks')
 }
 
 function statusTagType(status) {

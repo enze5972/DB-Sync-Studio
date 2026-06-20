@@ -13,7 +13,7 @@ import java.sql.Statement;
 public final class SqliteSchemaInitializer {
 
     private static final String SCHEMA_RESOURCE = "/db/schema.sql";
-    private static final int CURRENT_SCHEMA_VERSION = 11;
+    private static final int CURRENT_SCHEMA_VERSION = 12;
 
     private SqliteSchemaInitializer() {
     }
@@ -273,6 +273,12 @@ public final class SqliteSchemaInitializer {
         ensureIndex(connection, "idx_alert_history_run_id", "alert_history", "run_id");
         ensureIndex(connection, "idx_alert_dedup_state_key", "alert_dedup_state", "dedup_key");
         ensureIndex(connection, "idx_alert_dedup_state_cooldown_until", "alert_dedup_state", "cooldown_until");
+        ensureTable(connection, "app_setting", "CREATE TABLE IF NOT EXISTS app_setting (" +
+                "setting_key TEXT PRIMARY KEY, " +
+                "setting_value TEXT, " +
+                "updated_at INTEGER NOT NULL" +
+                ")");
+        ensureIndex(connection, "idx_app_setting_updated_at", "app_setting", "updated_at");
         ensureTable(connection, "schema_migration_entry", "CREATE TABLE IF NOT EXISTS schema_migration_entry (" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 "migration_version INTEGER NOT NULL UNIQUE, " +

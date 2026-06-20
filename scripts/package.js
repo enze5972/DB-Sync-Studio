@@ -378,8 +378,14 @@ function ensureDmgPresent() {
 function validateBundleInputs() {
   const checks = [
     { label: 'backend jar', filePath: path.join(BACKEND_DIR, 'app-core.jar') },
+    { label: 'backend launcher sh', filePath: path.join(BACKEND_DIR, 'run-backend.sh') },
+    { label: 'backend launcher bat', filePath: path.join(BACKEND_DIR, 'run-backend.bat') },
+    { label: 'backend runtime image', filePath: path.join(RELEASE_DIR, 'runtime') },
     { label: 'frontend dist', filePath: path.join(UI_DIR, 'dist') },
-    { label: 'tauri config', filePath: path.join(ROOT, 'app-shell', 'src-tauri', 'tauri.conf.json') }
+    { label: 'tauri config', filePath: path.join(ROOT, 'app-shell', 'src-tauri', 'tauri.conf.json') },
+    { label: 'tauri icon png', filePath: path.join(ROOT, 'app-shell', 'src-tauri', 'icons', 'icon.png') },
+    { label: 'tauri icon ico', filePath: path.join(ROOT, 'app-shell', 'src-tauri', 'icons', 'icon.ico') },
+    { label: 'tauri icon icns', filePath: path.join(ROOT, 'app-shell', 'src-tauri', 'icons', 'icon.icns') }
   ];
   const missing = checks.filter(function (item) {
     return !fs.existsSync(item.filePath);

@@ -9,15 +9,21 @@
       <div class="coming-soon__hint">
         目标：先让界面、数据和同步流程逐步接上，再继续扩展高级能力。
       </div>
+      <div v-if="route.name === 'settings'" class="coming-soon__actions">
+        <el-button type="primary" @click="restartGuide">重新打开新手引导</el-button>
+        <el-button @click="openHelp">帮助文档</el-button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { resetFirstLaunchCompleted } from '../services/onboardingState'
 
 const route = useRoute()
+const router = useRouter()
 const title = computed(function () {
   switch (route.name) {
     case 'datasource':
@@ -36,4 +42,13 @@ const title = computed(function () {
       return '功能页'
   }
 })
+
+async function restartGuide() {
+  await resetFirstLaunchCompleted()
+  await router.push('/welcome')
+}
+
+function openHelp() {
+  router.push('/help')
+}
 </script>

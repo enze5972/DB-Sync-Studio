@@ -103,7 +103,14 @@
           <el-table-column prop="logLevel" label="级别" width="120" />
           <el-table-column prop="logMessage" label="日志内容" min-width="520" />
         </el-table>
-        <el-empty v-if="!loading && !logs.length" description="暂无匹配的日志" />
+        <StateEmpty
+          v-if="!loading && !logs.length"
+          title="还没有执行日志"
+          description="先选一个任务，或者执行一次同步任务。"
+          hint="日志会记录 run_id、表名、级别和失败原因。"
+          button-text="去执行历史"
+          @action="goToExecutionHistory"
+        />
       </div>
     </div>
   </div>
@@ -111,9 +118,12 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { cleanupLogs, getDiagnosticsStatus, getLogRetentionDays, listLogs, listTasks, updateLogRetentionDays } from '../services/backend'
+import StateEmpty from '../components/StateEmpty.vue'
 
+const router = useRouter()
 const loading = ref(false)
 const tasks = ref([])
 const logs = ref([])
@@ -211,6 +221,10 @@ async function cleanupHistory() {
   } finally {
     cleaning.value = false
   }
+}
+
+function goToExecutionHistory() {
+  router.push('/execution-history')
 }
 
 function exportCurrentLogs() {
