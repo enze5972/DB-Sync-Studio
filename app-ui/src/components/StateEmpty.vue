@@ -1,9 +1,9 @@
 <template>
-  <div class="state-empty glass-panel" :class="{ 'state-empty--wide': wide }">
+  <div class="state-empty glass-panel" :class="['state-empty--' + size, { 'state-empty--wide': wide }]">
     <div class="state-empty__icon">
       <span>◎</span>
     </div>
-    <div class="state-empty__eyebrow">准备好开始下一步</div>
+    <div class="state-empty__eyebrow">{{ eyebrow }}</div>
     <div class="state-empty__title">{{ title }}</div>
     <div class="state-empty__desc">{{ description }}</div>
     <div class="state-empty__hint">{{ hint }}</div>
@@ -16,6 +16,10 @@
 
 <script setup>
 defineProps({
+  eyebrow: {
+    type: String,
+    default: '当前无内容'
+  },
   title: {
     type: String,
     default: ''
@@ -39,6 +43,10 @@ defineProps({
   wide: {
     type: Boolean,
     default: false
+  },
+  size: {
+    type: String,
+    default: 'compact'
   }
 })
 

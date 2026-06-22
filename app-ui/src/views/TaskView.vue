@@ -1,39 +1,74 @@
 <template>
-  <div class="page-section">
-    <div class="page-header">
+  <div class="page-section task-workbench">
+    <div class="page-header task-workbench__header">
       <div>
         <h1>同步任务</h1>
-        <p>创建任务、立即执行、查看执行日志，形成完整同步闭环。</p>
+        <p>管理同步任务、执行调度、查看日志与断点，形成完整的数据同步闭环。</p>
       </div>
       <el-space>
         <el-button round @click="goToWizard">创建向导</el-button>
-        <el-button type="primary" round @click="openCreateDialog">新建任务</el-button>
+        <el-button type="primary" round @click="openCreateDialog">新建同步任务</el-button>
       </el-space>
     </div>
 
-    <div class="dashboard-panels dashboard-panels--compact">
-      <div class="panel-card glass-panel">
-        <div class="status-stack" style="margin-bottom: 14px;">
-          <div class="status-item">
+    <div class="page-overview page-overview--five task-workbench__overview">
+      <div v-for="item in overviewCards" :key="item.label" class="page-overview__item task-workbench__overview-item">
+        <div class="page-overview__label">{{ item.label }}</div>
+        <div class="page-overview__value task-workbench__overview-value">{{ item.value }}</div>
+        <div class="page-overview__hint">{{ item.hint }}</div>
+      </div>
+    </div>
+
+    <div class="dashboard-panels task-workbench__panels">
+      <div class="panel-card glass-panel task-workbench__panel task-workbench__panel--left">
+        <div class="section-title section-title--compact task-workbench__section-head">
+          <h2>任务工作区</h2>
+          <el-tag type="info" effect="dark">{{ taskCountLabel }}</el-tag>
+        </div>
+
+        <div class="task-workbench__status-row">
+          <div class="status-item task-workbench__status-item">
             <span class="status-item__label">当前任务</span>
             <span class="status-item__value">{{ selectedTaskName || '未选择' }}</span>
           </div>
-          <div class="status-item">
+          <div class="status-item task-workbench__status-item">
             <span class="status-item__label">调度概览</span>
             <span class="status-item__value">{{ scheduleOverviewText }}</span>
           </div>
         </div>
-        <div class="table-shell">
+
+        <div v-if="!loading && !tasks.length" class="task-workbench__empty-shell">
+          <StateEmpty
+            class="task-workbench__empty"
+            title="创建第一个同步任务"
+            description="连接源库和目标库，配置表映射后即可开始同步。"
+            hint="1. 选择源数据源 · 2. 选择目标数据源 · 3. 扫描表结构 · 4. 配置字段映射 · 5. 执行同步并查看日志"
+            footer="同步任务、执行日志、断点恢复会在这里形成完整工作闭环。"
+            button-text="新建同步任务"
+            :wide="true"
+            @action="openCreateDialog"
+          />
+          <div class="task-workbench__empty-secondary">
+            <el-button plain round @click="goToWizard">使用创建向导</el-button>
+          </div>
+        </div>
+
+        <div v-else class="table-shell task-workbench__table-shell">
           <el-table :data="tasks" border stripe v-loading="loading" @row-click="selectTask">
-            <el-table-column prop="taskName" label="任务名" min-width="160" />
+            <el-table-column prop="taskName" label="任务名" min-width="170" />
+            <el-table-column label="状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="statusTagType(row.taskStatus)">{{ statusLabel(row.taskStatus) }}</el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="同步模式" width="120">
               <template #default="{ row }">
                 <el-tag>{{ syncModeLabel(row.syncMode) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="120">
+            <el-table-column label="调度" width="150">
               <template #default="{ row }">
-                <el-tag :type="statusTagType(row.taskStatus)">{{ statusLabel(row.taskStatus) }}</el-tag>
+                {{ scheduleSummary(row) }}
               </template>
             </el-table-column>
             <el-table-column label="进度" min-width="220">
@@ -43,43 +78,9 @@
                     <span>{{ row.syncedRowCount || 0 }} / {{ row.totalRowCount || 0 }}</span>
                     <span>{{ progressPercent(row) }}%</span>
                   </div>
-                  <el-progress
-                    :percentage="progressPercent(row)"
-                    :stroke-width="10"
-                    :show-text="false"
-                  />
-                  <div class="task-progress__hint">
-                    {{ row.progressMessage || '等待执行' }}
-                  </div>
+                  <el-progress :percentage="progressPercent(row)" :stroke-width="10" :show-text="false" />
+                  <div class="task-progress__hint">{{ row.progressMessage || '等待执行' }}</div>
                 </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="源表" min-width="180">
-              <template #default="{ row }">
-                {{ row.sourceSchemaName ? row.sourceSchemaName + '.' : '' }}{{ row.sourceTableName }}
-              </template>
-            </el-table-column>
-            <el-table-column label="目标表" min-width="180">
-              <template #default="{ row }">
-                {{ row.targetSchemaName ? row.targetSchemaName + '.' : '' }}{{ row.targetTableName }}
-              </template>
-            </el-table-column>
-            <el-table-column label="表配置" min-width="220">
-              <template #default="{ row }">
-                <div class="task-progress">
-                  <div class="task-progress__line">
-                    <span>{{ syncModeLabel(row.syncMode) }}</span>
-                    <span>{{ row.batchSize || 500 }} / 批</span>
-                  </div>
-                  <div class="task-progress__hint">
-                    {{ incrementalSummary(row) }}
-                  </div>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="调度" width="160">
-              <template #default="{ row }">
-                {{ scheduleSummary(row) }}
               </template>
             </el-table-column>
             <el-table-column label="下次执行" width="180">
@@ -87,92 +88,150 @@
                 {{ formatTime(row.scheduleNextRunAt) }}
               </template>
             </el-table-column>
-            <el-table-column label="最近结果" width="140">
+            <el-table-column label="最近结果" width="120">
               <template #default="{ row }">
                 <el-tag :type="scheduleResultTagType(row.scheduleLastResult)">{{ row.scheduleLastResult || '-' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="400" fixed="right">
+            <el-table-column label="操作" width="300" fixed="right">
               <template #default="{ row }">
-                <el-space>
+                <el-space wrap>
                   <el-button size="small" type="success" @click.stop="startSelectedTask(row)">开始</el-button>
                   <el-button size="small" type="primary" plain @click.stop="runBatchSelectedTask(row)">批量</el-button>
                   <el-button size="small" @click.stop="openExecutionHistory(row)">历史</el-button>
-                  <el-button size="small" @click.stop="pauseSelectedTask(row)">暂停</el-button>
-                  <el-button size="small" type="warning" @click.stop="resumeSelectedTask(row)">恢复</el-button>
-                  <el-button size="small" type="danger" @click.stop="stopSelectedTask(row)">停止</el-button>
-                  <el-button size="small" @click.stop="openMappings(row)">映射</el-button>
-                  <el-button size="small" @click.stop="openTaskEditor(row, true)">多表配置</el-button>
-                  <el-button size="small" @click.stop="previewTable(row, 'source')">源表查看</el-button>
-                  <el-button size="small" @click.stop="previewTable(row, 'target')">目标查看</el-button>
                   <el-button size="small" @click.stop="openTaskEditor(row, false)">编辑</el-button>
-                  <el-button size="small" type="danger" @click.stop="removeTask(row)">删除</el-button>
                 </el-space>
               </template>
             </el-table-column>
           </el-table>
           <StateEmpty
             v-if="!loading && !tasks.length"
-            title="还没有同步任务"
-            description="先创建一个同步任务，把源表和目标表连接起来。"
-            hint="任务创建后，可以继续配置字段映射、执行同步和查看日志。"
-            button-text="新建任务"
+            title="创建第一个同步任务"
+            description="连接源库和目标库，配置表映射后即可开始同步。"
+            hint="1. 选择源数据源 · 2. 选择目标数据源 · 3. 扫描表结构 · 4. 配置字段映射 · 5. 执行同步并查看日志"
+            footer="同步任务、执行日志、断点恢复会在这里形成完整工作闭环。"
+            button-text="新建同步任务"
+            :wide="true"
             @action="openCreateDialog"
           />
         </div>
       </div>
 
-      <div class="panel-card glass-panel">
-        <div class="section-title">
-          <h2>任务日志</h2>
+      <div class="panel-card glass-panel task-workbench__panel task-workbench__panel--right">
+        <div class="section-title section-title--compact task-workbench__section-head">
+          <h2>任务详情工作区</h2>
           <el-space>
-            <el-tag type="info" effect="dark">{{ selectedTaskName || '未选择任务' }}</el-tag>
+            <el-tag :type="selectedTaskRow ? 'success' : 'info'" effect="dark">
+              {{ selectedTaskRow ? '已选择任务' : '未选择任务' }}
+            </el-tag>
             <el-button size="small" @click="openExecutionHistory(selectedTaskRow)" :disabled="!selectedTaskRow">执行历史</el-button>
             <el-button size="small" @click="goToTaskLogs" :disabled="!selectedTaskRow">日志页</el-button>
           </el-space>
         </div>
-        <div class="status-stack">
-          <div v-if="selectedTaskId === null" class="status-item">
-            <span class="status-item__label">提示</span>
-            <span class="status-item__value">点击左侧任务查看日志</span>
+
+        <div v-if="!selectedTaskRow" class="task-workbench__detail-empty">
+          <div class="status-item task-workbench__detail-empty-card">
+            <span class="status-item__label">请选择左侧同步任务</span>
+            <span class="status-item__value">选择任务后，可以查看实时日志、执行历史和同步断点。</span>
           </div>
-          <div v-else class="status-item">
-            <span class="status-item__label">进度 / 耗时</span>
-            <span class="status-item__value">
-              {{ selectedTaskProgress.syncedRowCount }} / {{ selectedTaskProgress.totalRowCount }}
-              · {{ selectedTaskProgress.durationText }}
-            </span>
+          <div class="task-workbench__detail-grid">
+            <div class="task-workbench__detail-card">
+              <span class="task-workbench__detail-label">实时日志</span>
+              <span class="task-workbench__detail-value">选择任务后显示</span>
+            </div>
+            <div class="task-workbench__detail-card">
+              <span class="task-workbench__detail-label">执行历史</span>
+              <span class="task-workbench__detail-value">选择任务后可查看</span>
+            </div>
+            <div class="task-workbench__detail-card">
+              <span class="task-workbench__detail-label">当前断点</span>
+              <span class="task-workbench__detail-value">断点值、更新时间、同步模式和最近状态</span>
+            </div>
           </div>
-          <div v-for="entry in taskLogs" :key="entry.id" class="capability-item">
-            <div class="capability-item__title">{{ formatTime(entry.createdAt) }}</div>
-            <div class="capability-item__desc">
-              <div>{{ entry.logLevel }} - {{ entry.logMessage }}</div>
-              <div class="task-log-meta">
-                <span>run_id: {{ entry.runId || '-' }}</span>
-                <span>table: {{ entry.tableName || '-' }}</span>
+        </div>
+
+        <div v-else class="task-workbench__detail-content">
+          <div class="task-workbench__detail-tabs">
+            <el-segmented v-model="detailTab" :options="detailTabOptions" />
+          </div>
+
+          <div v-if="detailTab === 'logs'" class="task-workbench__detail-stack">
+            <div class="status-item task-workbench__detail-summary">
+              <span class="status-item__label">实时日志</span>
+              <span class="status-item__value">
+                {{ selectedTaskProgress.syncedRowCount }} / {{ selectedTaskProgress.totalRowCount }} · {{ selectedTaskProgress.durationText }}
+              </span>
+            </div>
+            <div v-for="entry in taskLogs" :key="entry.id" class="capability-item task-workbench__log-item">
+              <div class="capability-item__title">{{ formatTime(entry.createdAt) }}</div>
+              <div class="capability-item__desc">
+                <div>{{ entry.logLevel }} - {{ entry.logMessage }}</div>
+                <div class="task-log-meta">
+                  <span>run_id: {{ entry.runId || '-' }}</span>
+                  <span>table: {{ entry.tableName || '-' }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="!taskLogs.length" class="status-item">
+              <span class="status-item__label">提示</span>
+              <span class="status-item__value">暂无日志记录</span>
+            </div>
+          </div>
+
+          <div v-else-if="detailTab === 'history'" class="task-workbench__detail-stack">
+            <div class="status-item">
+              <span class="status-item__label">执行历史</span>
+              <span class="status-item__value">可通过顶部按钮进入完整执行历史页面。</span>
+            </div>
+            <div class="task-workbench__detail-grid task-workbench__detail-grid--history">
+              <div class="task-workbench__detail-card">
+                <span class="task-workbench__detail-label">最近状态</span>
+                <span class="task-workbench__detail-value">{{ statusLabel(selectedTaskRow.taskStatus) }}</span>
+              </div>
+              <div class="task-workbench__detail-card">
+                <span class="task-workbench__detail-label">最近结果</span>
+                <span class="task-workbench__detail-value">{{ selectedTaskRow.scheduleLastResult || '—' }}</span>
+              </div>
+              <div class="task-workbench__detail-card">
+                <span class="task-workbench__detail-label">最近消息</span>
+                <span class="task-workbench__detail-value">{{ selectedTaskRow.scheduleLastMessage || '—' }}</span>
               </div>
             </div>
           </div>
-          <div v-if="selectedTaskId !== null && !taskLogs.length" class="status-item">
-            <span class="status-item__label">提示</span>
-            <span class="status-item__value">暂无日志记录</span>
-          </div>
-        </div>
 
-        <div class="section-title" style="margin-top: 20px;">
-          <h2>当前断点</h2>
-        </div>
-        <div class="status-stack">
-          <div class="status-item">
-            <span class="status-item__label">断点值</span>
-            <span class="status-item__value">{{ selectedTaskCheckpoint.value }}</span>
+          <div v-else class="task-workbench__detail-stack">
+            <div class="status-item">
+              <span class="status-item__label">日志页</span>
+              <span class="status-item__value">选择任务后可打开完整日志页继续排查执行细节。</span>
+            </div>
+            <el-button type="primary" @click="goToTaskLogs" :disabled="!selectedTaskRow">打开日志页</el-button>
           </div>
-          <div class="status-item">
-            <span class="status-item__label">更新时间</span>
-            <span class="status-item__value">{{ selectedTaskCheckpoint.updatedAt }}</span>
-          </div>
-        </div>
 
+          <div class="task-workbench__detail-stack">
+            <div class="section-title section-title--compact task-workbench__subsection-head">
+              <h2>当前断点</h2>
+              <el-tag type="info">{{ selectedTaskRow.incrementalMode || '默认' }}</el-tag>
+            </div>
+            <div class="task-workbench__checkpoint-grid">
+              <div class="task-workbench__checkpoint-item">
+                <span class="task-workbench__checkpoint-label">断点值</span>
+                <span class="task-workbench__checkpoint-value">{{ selectedTaskCheckpoint.value }}</span>
+              </div>
+              <div class="task-workbench__checkpoint-item">
+                <span class="task-workbench__checkpoint-label">更新时间</span>
+                <span class="task-workbench__checkpoint-value">{{ selectedTaskCheckpoint.updatedAt }}</span>
+              </div>
+              <div class="task-workbench__checkpoint-item">
+                <span class="task-workbench__checkpoint-label">同步模式</span>
+                <span class="task-workbench__checkpoint-value">{{ syncModeLabel(selectedTaskRow.syncMode) }}</span>
+              </div>
+              <div class="task-workbench__checkpoint-item">
+                <span class="task-workbench__checkpoint-label">最近状态</span>
+                <span class="task-workbench__checkpoint-value">{{ statusLabel(selectedTaskRow.taskStatus) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -457,6 +516,12 @@ const taskTables = ref([])
 const editingId = ref(null)
 const editingTaskTablesOnly = ref(false)
 const refreshTimer = ref(null)
+const detailTab = ref('logs')
+const detailTabOptions = [
+  { label: '实时日志', value: 'logs' },
+  { label: '执行历史', value: 'history' },
+  { label: '日志页', value: 'logsPage' }
+]
 
 const form = reactive(createEmptyForm())
 
@@ -476,6 +541,33 @@ const selectedTaskRow = computed(function () {
   return tasks.value.find(function (item) {
     return item.id === selectedTaskId.value
   }) || null
+})
+
+const taskCountLabel = computed(function () {
+  return tasks.value.length + ' 个任务'
+})
+
+const overviewCards = computed(function () {
+  const total = tasks.value.length
+  const running = tasks.value.filter(function (item) {
+    return item.taskStatus === 'RUNNING'
+  }).length
+  const waiting = tasks.value.filter(function (item) {
+    return item.taskStatus === 'PENDING' || item.taskStatus === 'WAITING'
+  }).length
+  const success = tasks.value.filter(function (item) {
+    return item.taskStatus === 'SUCCESS'
+  }).length
+  const failed = tasks.value.filter(function (item) {
+    return item.taskStatus === 'FAILED'
+  }).length
+  return [
+    { label: '总任务', value: total, hint: '当前同步任务总数' },
+    { label: '运行中', value: running, hint: '正在执行中的任务' },
+    { label: '等待中', value: waiting, hint: '待启动或待调度任务' },
+    { label: '成功', value: success, hint: '最近执行成功的任务' },
+    { label: '失败', value: failed, hint: '最近执行失败的任务' }
+  ]
 })
 
 onMounted(function () {
@@ -748,6 +840,7 @@ async function selectTask(row) {
   }
   selectedTaskId.value = row.id
   selectedTaskName.value = row.taskName
+  detailTab.value = 'logs'
   try {
     taskLogs.value = await listTaskLogs(row.id)
   } catch (error) {
@@ -1136,12 +1229,12 @@ const selectedTaskCheckpoint = computed(function () {
   const row = selectedTaskRow.value
   if (!row) {
     return {
-      value: '-',
-      updatedAt: '-'
+      value: '—',
+      updatedAt: '—'
     }
   }
   return {
-    value: row.incrementalCheckpointValue || '-',
+    value: row.incrementalCheckpointValue || '—',
     updatedAt: formatTime(row.incrementalCheckpointUpdatedAt)
   }
 })
@@ -1152,7 +1245,7 @@ const scheduleOverviewText = computed(function () {
     return '暂无任务'
   }
   if (!selectedRow.scheduleEnabled) {
-    return '未启用调度'
+    return '未启动'
   }
   return scheduleSummary(selectedRow) + ' · 下次 ' + formatTime(selectedRow.scheduleNextRunAt)
 })
@@ -1172,7 +1265,7 @@ function formatDuration(value) {
 
 function scheduleSummary(row) {
   if (!row || !row.scheduleEnabled) {
-    return '未启用'
+    return '未启动'
   }
   if (row.scheduleType === 'CRON') {
     return 'Cron'
@@ -1197,3 +1290,150 @@ function scheduleResultTagType(value) {
 }
 
 </script>
+
+<style scoped>
+.task-workbench {
+  gap: 18px;
+}
+
+.task-workbench__header p {
+  max-width: 760px;
+}
+
+.task-workbench__overview {
+  margin-top: 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.task-workbench__overview-item {
+  min-height: 108px;
+  padding: 14px 16px;
+}
+
+.task-workbench__overview-value {
+  font-size: 22px;
+}
+
+.task-workbench__panels {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+}
+
+.task-workbench__panel {
+  display: grid;
+  gap: 14px;
+  min-height: 100%;
+  align-content: start;
+}
+
+.task-workbench__status-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.task-workbench__status-item {
+  min-height: 76px;
+}
+
+.task-workbench__empty-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.task-workbench__empty {
+  margin: 0;
+}
+
+.task-workbench__empty-secondary {
+  display: flex;
+  justify-content: center;
+}
+
+.task-workbench__table-shell {
+  margin-top: 0;
+}
+
+.task-workbench__detail-empty,
+.task-workbench__detail-content,
+.task-workbench__detail-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.task-workbench__detail-empty-card {
+  min-height: 92px;
+}
+
+.task-workbench__detail-grid,
+.task-workbench__checkpoint-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.task-workbench__checkpoint-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.task-workbench__detail-card,
+.task-workbench__checkpoint-item {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.task-workbench__detail-label,
+.task-workbench__checkpoint-label {
+  display: block;
+  color: var(--text-sub);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.task-workbench__detail-value,
+.task-workbench__checkpoint-value {
+  display: block;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.task-workbench__detail-tabs {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.task-workbench__log-item {
+  padding: 12px 14px;
+}
+
+.task-workbench__detail-summary {
+  margin-bottom: 2px;
+}
+
+@media (max-width: 1280px) {
+  .task-workbench__overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-workbench__panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .task-workbench__detail-grid,
+  .task-workbench__checkpoint-grid,
+  .task-workbench__status-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .task-workbench__overview,
+  .task-workbench__detail-grid,
+  .task-workbench__checkpoint-grid,
+  .task-workbench__status-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>

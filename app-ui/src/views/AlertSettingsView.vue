@@ -1,156 +1,230 @@
 <template>
-  <div class="page-section alert-settings">
-    <div class="page-header">
-      <div>
+  <div class="page-section alert-settings-workbench">
+    <div class="page-header alert-settings-workbench__header">
+      <div class="alert-settings-workbench__titleblock">
         <h1>告警设置</h1>
-        <p>管理告警规则、告警渠道与渠道测试，敏感信息不会明文展示。</p>
+        <p>管理告警规则、通知渠道和渠道测试，敏感信息不会明文展示。</p>
       </div>
-      <el-space>
-        <el-button round :loading="loading" @click="loadPageData">刷新</el-button>
-        <el-button type="primary" round @click="openRuleDialog()">新增规则</el-button>
-        <el-button type="primary" plain round @click="openChannelDialog()">新增渠道</el-button>
-      </el-space>
-    </div>
-
-    <div class="page-overview page-overview--three">
-      <div class="page-overview__item">
-        <div class="page-overview__label">告警规则</div>
-        <div class="page-overview__value">{{ rules.length }}</div>
-        <div class="page-overview__hint">支持启用/停用、冷却时间和任务/表级绑定</div>
-      </div>
-      <div class="page-overview__item">
-        <div class="page-overview__label">告警渠道</div>
-        <div class="page-overview__value">{{ channels.length }}</div>
-        <div class="page-overview__hint">SMTP 与 Webhook 最小可用通道</div>
-      </div>
-      <div class="page-overview__item">
-        <div class="page-overview__label">可用任务</div>
-        <div class="page-overview__value">{{ tasks.length }}</div>
-        <div class="page-overview__hint">规则可直接绑定已有同步任务</div>
+      <div class="alert-settings-workbench__toolbar">
+        <div class="alert-settings-workbench__toolbar-actions">
+          <el-button round :loading="loading" @click="loadPageData">刷新</el-button>
+          <el-button type="primary" round :disabled="!canCreateRule" @click="openRuleDialog()">
+            新增规则
+          </el-button>
+          <el-button type="primary" plain round @click="openChannelDialog()">新增渠道</el-button>
+        </div>
+        <div class="alert-settings-workbench__toolbar-note">
+          {{ toolbarHint }}
+        </div>
       </div>
     </div>
 
-    <div class="dashboard-panels dashboard-panels--compact">
-      <div class="panel-card glass-panel">
+    <div class="stats-grid alert-settings-workbench__stats">
+      <div v-for="item in summaryCards" :key="item.label" class="stat-card alert-settings-workbench__stat-card">
+        <div class="stat-card__label">{{ item.label }}</div>
+        <div class="stat-card__value">{{ item.value }}</div>
+        <div class="stat-card__hint">{{ item.hint }}</div>
+      </div>
+    </div>
+
+    <div class="dashboard-panels dashboard-panels--compact alert-settings-workbench__workspace">
+      <div class="panel-card alert-settings-workbench__panel">
         <div class="section-title">
-          <h2>告警规则</h2>
-          <el-tag type="warning" effect="dark">{{ enabledRuleCount }} 个启用</el-tag>
+          <div class="section-title__left">
+            <h2>告警规则</h2>
+            <el-tag :type="ruleSummaryTagType" effect="light">{{ ruleSummaryText }}</el-tag>
+          </div>
+          <el-tag effect="dark" type="warning">{{ enabledRuleCount }} 个启用</el-tag>
         </div>
-        <div class="table-shell">
-          <el-table :data="rules" border stripe v-loading="loading">
-            <el-table-column prop="ruleName" label="规则名" min-width="180" />
-            <el-table-column prop="alertType" label="类型" width="180" />
-            <el-table-column label="任务" width="120">
-              <template #default="{ row }">
-                {{ resolveTaskName(row.taskId) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="tableName" label="表名" min-width="140" />
-            <el-table-column label="级别" width="100">
-              <template #default="{ row }">
-                <el-tag :type="alertLevelTagType(row.alertLevel)">{{ row.alertLevel || '-' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="cooldownSeconds" label="冷却" width="100">
-              <template #default="{ row }">
-                {{ row.cooldownSeconds || 600 }}s
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="100">
-              <template #default="{ row }">
-                <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="渠道" min-width="180">
-              <template #default="{ row }">
-                {{ resolveChannelNames(row.channelIdsJson) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="240" fixed="right">
-              <template #default="{ row }">
-                <el-space>
-                  <el-button size="small" @click.stop="openRuleDialog(row)">编辑</el-button>
-                  <el-button
-                    size="small"
-                    type="danger"
-                    :loading="deletingRuleId === row.id"
-                    :disabled="deletingRuleId !== null || deletingChannelId !== null || testingChannelId !== null"
-                    @click.stop="removeRule(row)"
-                  >
-                    删除
-                  </el-button>
-                </el-space>
-              </template>
-            </el-table-column>
-          </el-table>
-          <StateEmpty
-            v-if="!loading && !rules.length"
-            title="还没有告警规则"
-            description="先创建一个规则，才能按任务或表触发告警。"
-            hint="建议先去帮助文档看一下告警配置流程。"
-            button-text="新增规则"
-            @action="openRuleDialog()"
-          />
+        <div class="alert-settings-workbench__panel-hint">
+          <span>{{ ruleHint }}</span>
         </div>
+        <template v-if="rules.length">
+          <div class="table-shell">
+            <el-table :data="rules" border stripe v-loading="loading">
+              <el-table-column label="规则" min-width="220" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <div class="alert-settings-workbench__cell-stack">
+                    <div class="alert-settings-workbench__primary">{{ row.ruleName || '-' }}</div>
+                    <div class="alert-settings-workbench__secondary">{{ alertTypeLabel(row.alertType) }}</div>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="触发对象" min-width="160" show-overflow-tooltip>
+                <template #default="{ row }">
+                  {{ resolveRuleTrigger(row) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="条件" min-width="210" show-overflow-tooltip>
+                <template #default="{ row }">
+                  {{ resolveRuleCondition(row) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="渠道" min-width="180" show-overflow-tooltip>
+                <template #default="{ row }">
+                  {{ resolveChannelNames(row.channelIdsJson) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="160">
+                <template #default="{ row }">
+                  <div class="alert-settings-workbench__chips">
+                    <el-tag :type="ruleStatusTagType(row)" effect="light">{{ ruleStatusLabel(row) }}</el-tag>
+                    <el-tag v-if="!hasBoundTask(row)" type="warning" effect="light">未绑定任务</el-tag>
+                    <el-tag v-if="!hasBoundChannel(row)" type="info" effect="light">未绑定渠道</el-tag>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="280" fixed="right">
+                <template #default="{ row }">
+                  <el-space>
+                    <el-button size="small" @click.stop="openRuleDialog(row)">编辑</el-button>
+                    <el-button
+                      size="small"
+                      :type="row.enabled ? 'warning' : 'success'"
+                      @click.stop="toggleRuleEnabled(row)"
+                    >
+                      {{ row.enabled ? '停用' : '启用' }}
+                    </el-button>
+                    <el-button
+                      size="small"
+                      type="danger"
+                      :loading="deletingRuleId === row.id"
+                      :disabled="deletingRuleId !== null || deletingChannelId !== null || testingChannelId !== null"
+                      @click.stop="removeRule(row)"
+                    >
+                      删除
+                    </el-button>
+                  </el-space>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </template>
+        <StateEmpty
+          v-else-if="!loading"
+          title="还没有告警规则"
+          description="先创建一个规则，绑定同步任务和通知渠道后即可在失败、异常或指标超限时发送告警。"
+          hint="建议先配置告警渠道，再创建规则。"
+          button-text="新增规则"
+          @action="openRuleDialog()"
+        />
       </div>
 
-      <div class="panel-card glass-panel">
+      <div class="panel-card alert-settings-workbench__panel">
         <div class="section-title">
-          <h2>告警渠道</h2>
-          <el-tag type="success" effect="dark">{{ enabledChannelCount }} 个启用</el-tag>
+          <div class="section-title__left">
+            <h2>告警渠道</h2>
+            <el-tag :type="channelSummaryTagType" effect="light">{{ channelSummaryText }}</el-tag>
+          </div>
+          <el-tag effect="dark" type="success">{{ enabledChannelCount }} 个启用</el-tag>
         </div>
-        <div class="table-shell">
-          <el-table :data="channels" border stripe v-loading="loading">
-            <el-table-column prop="channelName" label="名称" min-width="160" />
-            <el-table-column prop="channelType" label="类型" width="110" />
-            <el-table-column label="状态" width="100">
-              <template #default="{ row }">
-                <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="SMTP 收件人" min-width="180">
-              <template #default="{ row }">
-                {{ maskDisplay(row.smtpToAddress) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="Webhook" min-width="220" show-overflow-tooltip>
-              <template #default="{ row }">
-                {{ maskDisplay(row.webhookUrl) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="320" fixed="right">
-              <template #default="{ row }">
-                <el-space>
-                  <el-button size="small" type="primary" plain @click.stop="openChannelDialog(row)">编辑</el-button>
-                  <el-button
-                    size="small"
-                    :loading="testingChannelId === row.id"
-                    :disabled="deletingRuleId !== null || deletingChannelId !== null || testingChannelId !== null"
-                    @click.stop="testChannel(row)"
-                  >
-                    测试
-                  </el-button>
-                  <el-button
-                    size="small"
-                    type="danger"
-                    :loading="deletingChannelId === row.id"
-                    :disabled="deletingRuleId !== null || deletingChannelId !== null || testingChannelId !== null"
-                    @click.stop="removeChannel(row)"
-                  >
-                    删除
-                  </el-button>
-                </el-space>
-              </template>
-            </el-table-column>
-          </el-table>
-          <StateEmpty
-            v-if="!loading && !channels.length"
-            title="还没有告警渠道"
-            description="先配置一个 SMTP 或 Webhook 渠道，规则才能发送通知。"
-            hint="渠道保存后可以立即测试发送。"
-            button-text="新增渠道"
-            @action="openChannelDialog()"
-          />
+        <div class="alert-settings-workbench__panel-hint">
+          <span>{{ channelHint }}</span>
+        </div>
+        <template v-if="channels.length">
+          <div class="table-shell">
+            <el-table :data="channels" border stripe v-loading="loading">
+              <el-table-column label="名称" min-width="180" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <div class="alert-settings-workbench__cell-stack">
+                    <div class="alert-settings-workbench__primary">{{ row.channelName || '-' }}</div>
+                    <div class="alert-settings-workbench__secondary">{{ channelTypeLabel(row.channelType) }}</div>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="类型" width="120">
+                <template #default="{ row }">
+                  <el-tag effect="light" type="info">{{ channelTypeLabel(row.channelType) }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="120">
+                <template #default="{ row }">
+                  <el-tag :type="row.enabled ? 'success' : 'info'" effect="light">{{ row.enabled ? '已启用' : '已停用' }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="最近测试" min-width="180" show-overflow-tooltip>
+                <template #default="{ row }">
+                  {{ resolveChannelTestText(row) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="320" fixed="right">
+                <template #default="{ row }">
+                  <el-space>
+                    <el-button size="small" type="primary" plain @click.stop="openChannelDialog(row)">编辑</el-button>
+                    <el-button
+                      size="small"
+                      :loading="testingChannelId === row.id"
+                      :disabled="deletingRuleId !== null || deletingChannelId !== null || testingChannelId !== null"
+                      @click.stop="testChannel(row)"
+                    >
+                      测试发送
+                    </el-button>
+                    <el-button
+                      size="small"
+                      :type="row.enabled ? 'warning' : 'success'"
+                      @click.stop="toggleChannelEnabled(row)"
+                    >
+                      {{ row.enabled ? '停用' : '启用' }}
+                    </el-button>
+                    <el-button
+                      size="small"
+                      type="danger"
+                      :loading="deletingChannelId === row.id"
+                      :disabled="deletingRuleId !== null || deletingChannelId !== null || testingChannelId !== null"
+                      @click.stop="removeChannel(row)"
+                    >
+                      删除
+                    </el-button>
+                  </el-space>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </template>
+        <StateEmpty
+          v-else-if="!loading"
+          title="还没有告警渠道"
+          description="先配置一个 SMTP 或 Webhook 渠道，规则触发后才能发送通知。"
+          hint="渠道保存后建议先测试发送。"
+          button-text="新增渠道"
+          @action="openChannelDialog()"
+        />
+      </div>
+    </div>
+
+    <div class="panel-card alert-settings-workbench__guide">
+      <div class="section-title">
+        <h2>配置建议</h2>
+        <el-tag type="info" effect="light">敏感信息已隐藏</el-tag>
+      </div>
+      <div class="alert-settings-workbench__guide-grid">
+        <div class="alert-settings-workbench__guide-item">
+          <div class="alert-settings-workbench__guide-step">1</div>
+          <div>
+            <div class="alert-settings-workbench__guide-title">先新增告警渠道</div>
+            <div class="alert-settings-workbench__guide-text">可先配置 SMTP 或 Webhook，规则触发后才能发送通知。</div>
+          </div>
+        </div>
+        <div class="alert-settings-workbench__guide-item">
+          <div class="alert-settings-workbench__guide-step">2</div>
+          <div>
+            <div class="alert-settings-workbench__guide-title">测试渠道发送</div>
+            <div class="alert-settings-workbench__guide-text">建议先确认连接与鉴权，再启用规则。</div>
+          </div>
+        </div>
+        <div class="alert-settings-workbench__guide-item">
+          <div class="alert-settings-workbench__guide-step">3</div>
+          <div>
+            <div class="alert-settings-workbench__guide-title">新增告警规则并绑定任务</div>
+            <div class="alert-settings-workbench__guide-text">支持任务失败、表级指标和延迟阈值等常见场景。</div>
+          </div>
+        </div>
+        <div class="alert-settings-workbench__guide-item">
+          <div class="alert-settings-workbench__guide-step">4</div>
+          <div>
+            <div class="alert-settings-workbench__guide-title">启用规则开始监听</div>
+            <div class="alert-settings-workbench__guide-text">SMTP 密码、Webhook Secret 和 Token 不会明文展示。</div>
+          </div>
         </div>
       </div>
     </div>
@@ -189,9 +263,9 @@
           <el-col :span="12">
             <el-form-item label="告警级别">
               <el-select v-model="ruleForm.alertLevel" style="width: 100%;">
-                <el-option label="INFO" value="INFO" />
-                <el-option label="WARNING" value="WARNING" />
-                <el-option label="ERROR" value="ERROR" />
+                <el-option label="信息" value="INFO" />
+                <el-option label="警告" value="WARNING" />
+                <el-option label="错误" value="ERROR" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -232,8 +306,8 @@
           <el-col :span="12">
             <el-form-item label="渠道类型">
               <el-select v-model="channelForm.channelType" style="width: 100%;">
-                <el-option label="SMTP" value="SMTP" />
-                <el-option label="Webhook" value="WEBHOOK" />
+                <el-option label="邮件 SMTP" value="SMTP" />
+                <el-option label="Webhook 推送" value="WEBHOOK" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -354,6 +428,97 @@ const enabledChannelCount = computed(function () {
   }).length
 })
 
+const incompleteRuleCount = computed(function () {
+  return rules.value.filter(function (item) {
+    return !hasBoundTask(item) || !hasBoundChannel(item) || !item.ruleName
+  }).length
+})
+
+const canCreateRule = computed(function () {
+  return true
+})
+
+const canCreateChannel = computed(function () {
+  return true
+})
+
+const canTestChannel = computed(function () {
+  return channels.value.length > 0
+})
+
+const ruleSummaryText = computed(function () {
+  if (!rules.value.length) {
+    return '暂无规则'
+  }
+  if (incompleteRuleCount.value > 0) {
+    return '配置不完整'
+  }
+  return '已配置完整'
+})
+
+const ruleSummaryTagType = computed(function () {
+  if (!rules.value.length) {
+    return 'info'
+  }
+  if (incompleteRuleCount.value > 0) {
+    return 'warning'
+  }
+  return 'success'
+})
+
+const ruleHint = computed(function () {
+  if (!channels.value.length) {
+    return '建议先新增告警渠道，再创建规则。'
+  }
+  if (!rules.value.length) {
+    return '可先创建规则并绑定任务、条件和渠道。'
+  }
+  return '规则支持启用、停用、编辑和删除，敏感信息不会出现在此处。'
+})
+
+const channelSummaryText = computed(function () {
+  if (!channels.value.length) {
+    return '暂无渠道'
+  }
+  return canTestChannel.value ? '可测试' : '未测试'
+})
+
+const channelSummaryTagType = computed(function () {
+  if (!channels.value.length) {
+    return 'info'
+  }
+  return canTestChannel.value ? 'success' : 'warning'
+})
+
+const channelHint = computed(function () {
+  if (!channels.value.length) {
+    return '先配置 SMTP 或 Webhook 渠道，规则触发后才能发送通知。'
+  }
+  return '渠道名称、类型、状态和最近测试结果会保持清晰展示，密码和 Token 不会明文展示。'
+})
+
+const toolbarHint = computed(function () {
+  if (loading.value) {
+    return '正在刷新告警配置。'
+  }
+  if (!channels.value.length) {
+    return '建议先配置告警渠道，再创建规则。'
+  }
+  if (!rules.value.length) {
+    return '建议先创建规则并绑定任务，再启用通知。'
+  }
+  return '可继续调整规则、渠道和测试发送。'
+})
+
+const summaryCards = computed(function () {
+  return [
+    { label: '告警规则', value: rules.value.length, hint: '支持启用 / 停用、任务绑定和冷却时间' },
+    { label: '已启用规则', value: enabledRuleCount.value, hint: '当前可触发通知的规则' },
+    { label: '告警渠道', value: channels.value.length, hint: 'SMTP / Webhook 通知通道' },
+    { label: '可用任务', value: tasks.value.length, hint: '规则可绑定已有同步任务' }
+  ]
+})
+
 onMounted(function () {
   loadPageData()
 })
@@ -373,6 +538,10 @@ async function loadPageData() {
 }
 
 function openRuleDialog(row) {
+  if (!canCreateRule.value && !row) {
+    ElMessage.warning('建议先配置告警渠道，再创建规则')
+    return
+  }
   Object.assign(ruleForm, createEmptyRuleForm())
   if (row) {
     Object.assign(ruleForm, {
@@ -392,6 +561,10 @@ function openRuleDialog(row) {
 }
 
 function openChannelDialog(row) {
+  if (!canCreateChannel.value && !row) {
+    ElMessage.warning('告警渠道暂不可创建')
+    return
+  }
   Object.assign(channelForm, createEmptyChannelForm())
   if (row) {
     Object.assign(channelForm, {
@@ -465,6 +638,10 @@ async function saveChannel() {
 }
 
 async function testChannel(row) {
+  if (!canTestChannel.value) {
+    ElMessage.warning('请先配置至少一个告警渠道')
+    return
+  }
   try {
     await ElMessageBox.confirm('确认向该渠道发送测试告警吗？', '提示', {
       type: 'warning'
@@ -488,6 +665,50 @@ async function testChannel(row) {
     ElMessage.error(getErrorMessage(error, '测试告警失败'))
   } finally {
     testingChannelId.value = null
+  }
+}
+
+async function toggleRuleEnabled(row) {
+  try {
+    await saveAlertRule({
+      id: row.id,
+      ruleName: row.ruleName,
+      alertType: row.alertType,
+      taskId: row.taskId,
+      tableName: row.tableName,
+      alertLevel: row.alertLevel,
+      alertContentTemplate: row.alertContentTemplate,
+      channelIdsJson: row.channelIdsJson,
+      enabled: !row.enabled,
+      cooldownSeconds: row.cooldownSeconds
+    })
+    ElMessage.success(row.enabled ? '规则已停用' : '规则已启用')
+    await loadPageData()
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '更新规则状态失败'))
+  }
+}
+
+async function toggleChannelEnabled(row) {
+  try {
+    await saveAlertChannel({
+      id: row.id,
+      channelName: row.channelName,
+      channelType: row.channelType,
+      enabled: !row.enabled,
+      smtpHost: row.smtpHost,
+      smtpPort: row.smtpPort,
+      smtpUsername: row.smtpUsername,
+      smtpPassword: '',
+      smtpToAddress: row.smtpToAddress,
+      smtpFromAddress: row.smtpFromAddress,
+      webhookUrl: row.webhookUrl,
+      webhookToken: ''
+    })
+    ElMessage.success(row.enabled ? '渠道已停用' : '渠道已启用')
+    await loadPageData()
+  } catch (error) {
+    ElMessage.error(getErrorMessage(error, '更新渠道状态失败'))
   }
 }
 
@@ -581,6 +802,14 @@ function parseChannelIds(value) {
   }
 }
 
+function hasBoundTask(row) {
+  return row && row.taskId !== null && row.taskId !== undefined
+}
+
+function hasBoundChannel(row) {
+  return parseChannelIds(row && row.channelIdsJson).length > 0
+}
+
 function resolveTaskName(taskId) {
   const task = tasks.value.find(function (item) {
     return item.id === taskId
@@ -601,14 +830,92 @@ function resolveChannelNames(channelIdsJson) {
   }).join('，')
 }
 
-function alertLevelTagType(level) {
-  if (level === 'ERROR') {
-    return 'danger'
+function resolveRuleTrigger(row) {
+  if (!row) {
+    return '-'
   }
-  if (level === 'WARNING') {
+  if (row.taskId) {
+    return '任务 #' + row.taskId
+  }
+  if (row.tableName) {
+    return '表级：' + row.tableName
+  }
+  return '全局'
+}
+
+function resolveRuleCondition(row) {
+  if (!row) {
+    return '-'
+  }
+  const parts = []
+  if (row.alertType) {
+    parts.push(alertTypeLabel(row.alertType))
+  }
+  if (row.alertLevel) {
+    parts.push('级别 ' + row.alertLevel)
+  }
+  if (row.cooldownSeconds) {
+    parts.push('冷却 ' + row.cooldownSeconds + 's')
+  }
+  return parts.length ? parts.join(' · ') : '-'
+}
+
+function resolveChannelTestText(row) {
+  if (!row) {
+    return '-'
+  }
+  if (!row.lastTestStatus) {
+    return '未测试'
+  }
+  const status = row.lastTestStatus === 'SUCCESS' ? '测试成功' : '测试失败'
+  if (row.lastTestAt) {
+    return status + ' · ' + formatTime(row.lastTestAt)
+  }
+  return status
+}
+
+function ruleStatusLabel(row) {
+  if (!row) {
+    return '-'
+  }
+  if (!row.enabled) {
+    return '已停用'
+  }
+  if (!hasBoundTask(row) || !hasBoundChannel(row)) {
+    return '配置不完整'
+  }
+  return '已启用'
+}
+
+function ruleStatusTagType(row) {
+  if (!row || !row.enabled) {
+    return 'info'
+  }
+  if (!hasBoundTask(row) || !hasBoundChannel(row)) {
     return 'warning'
   }
-  return 'info'
+  return 'success'
+}
+
+function channelTypeLabel(type) {
+  if (type === 'WEBHOOK') {
+    return 'Webhook'
+  }
+  return 'SMTP'
+}
+
+function alertTypeLabel(type) {
+  const item = alertTypeOptions.find(function (option) {
+    return option.value === type
+  })
+  return item ? item.label : (type || '-')
+}
+
+function formatTime(value) {
+  if (!value) {
+    return '-'
+  }
+  return new Date(value).toLocaleString()
 }
 
 function maskDisplay(value) {
@@ -628,3 +935,172 @@ function getErrorMessage(error, fallback) {
   return fallback
 }
 </script>
+
+<style scoped>
+.alert-settings-workbench {
+  display: grid;
+  gap: 16px;
+}
+
+.alert-settings-workbench__header {
+  align-items: flex-start;
+}
+
+.alert-settings-workbench__titleblock {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.alert-settings-workbench__toolbar {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.alert-settings-workbench__toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.alert-settings-workbench__toolbar-note {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+  max-width: 440px;
+}
+
+.alert-settings-workbench__stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.alert-settings-workbench__stat-card {
+  min-height: 124px;
+}
+
+.alert-settings-workbench__workspace {
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.alert-settings-workbench__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+.alert-settings-workbench__panel-hint {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.alert-settings-workbench__cell-stack {
+  display: grid;
+  gap: 4px;
+}
+
+.alert-settings-workbench__primary {
+  font-weight: 650;
+  color: #0f172a;
+}
+
+.alert-settings-workbench__secondary {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.alert-settings-workbench__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.alert-settings-workbench__guide {
+  display: grid;
+  gap: 14px;
+}
+
+.alert-settings-workbench__guide-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.alert-settings-workbench__guide-item {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid #e5eaf3;
+  background: #fbfcfe;
+}
+
+.alert-settings-workbench__guide-step {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  background: #eef2ff;
+  color: #334155;
+  font-weight: 700;
+}
+
+.alert-settings-workbench__guide-title {
+  font-weight: 650;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.alert-settings-workbench__guide-text {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1280px) {
+  .alert-settings-workbench__workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .alert-settings-workbench__guide-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .alert-settings-workbench__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .alert-settings-workbench__toolbar,
+  .alert-settings-workbench__toolbar-note {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .alert-settings-workbench__toolbar-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .alert-settings-workbench__stats,
+  .alert-settings-workbench__guide-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .alert-settings-workbench__toolbar-actions .el-button {
+    width: 100%;
+  }
+}
+</style>

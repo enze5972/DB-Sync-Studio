@@ -1,52 +1,124 @@
 <template>
-  <div class="page-section">
-    <div class="page-header">
-      <div>
+  <div class="page-section field-mapping-workbench">
+    <div class="page-header field-mapping-workbench__header">
+      <div class="field-mapping-workbench__titleblock">
         <h1>字段映射</h1>
-        <p>按同步任务维护源字段到目标字段的映射、忽略字段和默认值。</p>
+        <p>按同步任务维护源字段到目标字段的映射、忽略字段和默认值，用于同步执行。</p>
       </div>
-      <el-space>
-        <el-select
-          v-model="selectedTaskId"
-          placeholder="选择任务"
-          style="min-width: 300px;"
-          @change="handleTaskChange"
-        >
-          <el-option v-for="task in tasks" :key="task.id" :label="task.taskName" :value="task.id" />
-        </el-select>
-        <el-button type="primary" round :disabled="!selectedTaskId" @click="openCreateDialog">
-          新建映射
-        </el-button>
-      </el-space>
+      <div class="field-mapping-workbench__toolbar">
+        <div class="field-mapping-workbench__toolbar-actions">
+          <el-select
+            v-model="selectedTaskId"
+            placeholder="选择任务"
+            class="field-mapping-workbench__task-select"
+            @change="handleTaskChange"
+          >
+            <el-option v-for="task in tasks" :key="task.id" :label="task.taskName" :value="task.id" />
+          </el-select>
+          <el-tooltip :disabled="canRegenerate" :content="regenerateDisabledReason" placement="bottom">
+            <span>
+              <el-button
+                :disabled="!canRegenerate"
+                @click="handleRegenerate"
+              >
+                重新推荐
+              </el-button>
+            </span>
+          </el-tooltip>
+          <el-tooltip :disabled="canCreateMapping" :content="createMappingDisabledReason" placement="bottom">
+            <span>
+              <el-button
+                type="primary"
+                :disabled="!canCreateMapping"
+                @click="openCreateDialog"
+              >
+                新建映射
+              </el-button>
+            </span>
+          </el-tooltip>
+        </div>
+        <div class="field-mapping-workbench__toolbar-note">
+          {{ toolbarHint }}
+        </div>
+      </div>
     </div>
 
-    <div class="page-overview page-overview--two">
+    <div class="field-mapping-workbench__overview page-overview page-overview--five">
       <div class="page-overview__item">
         <div class="page-overview__label">当前任务</div>
         <div class="page-overview__value">{{ selectedTaskName || '未选择' }}</div>
-        <div class="page-overview__hint">{{ currentTask ? qualifiedTableName(currentTask.sourceSchemaName, currentTask.sourceTableName) + ' → ' + qualifiedTableName(currentTask.targetSchemaName, currentTask.targetTableName) : '先选任务，再维护映射' }}</div>
+        <div class="page-overview__hint">{{ taskRouteText }}</div>
       </div>
       <div class="page-overview__item">
-        <div class="page-overview__label">映射数量</div>
-        <div class="page-overview__value">{{ mappings.length }}</div>
-        <div class="page-overview__hint">{{ ignoredMappingCount }} 个已忽略，支持手动确认和修改</div>
+        <div class="page-overview__label">映射覆盖率</div>
+        <div class="page-overview__value">{{ mappingCoverageText }}</div>
+        <div class="page-overview__hint">{{ coverageHint }}</div>
+        <el-progress :percentage="mappingCoverage" :show-text="false" :stroke-width="8" class="field-mapping-workbench__coverage-progress" />
+      </div>
+      <div class="page-overview__item">
+        <div class="page-overview__label">已映射</div>
+        <div class="page-overview__value">{{ confirmedCount }}</div>
+        <div class="page-overview__hint">已确认的字段映射规则</div>
+      </div>
+      <div class="page-overview__item">
+        <div class="page-overview__label">待确认</div>
+        <div class="page-overview__value">{{ pendingConfirmCount }}</div>
+        <div class="page-overview__hint">中低置信度推荐需人工确认</div>
+      </div>
+      <div class="page-overview__item">
+        <div class="page-overview__label">已忽略</div>
+        <div class="page-overview__value">{{ ignoredMappingCount }}</div>
+        <div class="page-overview__hint">不会参与同步的源字段</div>
       </div>
     </div>
 
-    <div class="panel-card glass-panel">
+    <div class="panel-card glass-panel field-mapping-workbench__recommendation">
       <div class="section-title">
-        <h2>智能推荐</h2>
+        <div class="section-title__left">
+          <h2>智能推荐</h2>
+          <el-tag :type="recommendationStatusTagType" effect="light">{{ recommendationStatusLabel }}</el-tag>
+        </div>
         <el-space>
-          <el-tag type="warning" effect="dark">{{ suggestionCount }} 条推荐</el-tag>
-          <el-button size="small" :disabled="!selectedTaskId || loadingSuggestions" :loading="loadingSuggestions" @click="loadSuggestions(selectedTaskId)">重新推荐</el-button>
+          <el-tag type="warning" effect="light">{{ recommendationSummary }}</el-tag>
+          <el-button
+            size="small"
+            :disabled="!canRegenerate || loadingSuggestions"
+            :title="regenerateDisabledReason"
+            :loading="loadingSuggestions"
+            @click="handleRegenerate"
+          >
+            重新推荐
+          </el-button>
         </el-space>
       </div>
-      <div class="table-shell">
-        <el-table :data="suggestions" border stripe v-loading="loadingSuggestions">
-          <el-table-column prop="sourceColumnName" label="源字段" min-width="180" />
-          <el-table-column label="目标字段" min-width="220">
+
+      <div class="field-mapping-workbench__panel-hint">
+        <span>{{ recommendationHint }}</span>
+      </div>
+
+      <div v-if="selectedTaskId" class="field-mapping-workbench__table-shell table-shell">
+        <el-table :data="suggestions" border stripe v-loading="loadingSuggestions" :empty-text="selectedTaskId ? '暂无推荐映射，请点击“重新推荐”。' : ''">
+          <el-table-column prop="sourceColumnName" label="源字段" min-width="180">
+            <template #default="{ row }">
+              <div class="field-cell">
+                <span class="field-cell__title">{{ row.sourceColumnName || '—' }}</span>
+                <span class="field-cell__sub">{{ row.ignored ? '已忽略' : '待处理' }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="源类型" width="120">
+            <template #default="{ row }">
+              {{ row.sourceColumnType || '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="推荐目标字段" min-width="220">
             <template #default="{ row }">
               <el-input v-model="row.targetColumnName" size="small" placeholder="手动修改目标字段" @input="markSuggestionDirty(row)" />
+            </template>
+          </el-table-column>
+          <el-table-column label="目标类型" width="120">
+            <template #default="{ row }">
+              {{ row.targetColumnType || '—' }}
             </template>
           </el-table-column>
           <el-table-column label="置信度" width="120">
@@ -54,25 +126,16 @@
               <el-tag :type="confidenceTagType(row.confidence)" effect="light">{{ formatConfidence(row.confidence) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="matchReason" label="原因" min-width="180">
+          <el-table-column label="状态" width="120">
             <template #default="{ row }">
-              <span class="table-muted">{{ row.matchReason || '-' }}</span>
+              <el-tag :type="suggestionStatusTagType(row)" effect="light">{{ suggestionStatusLabel(row) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="忽略" width="110">
-            <template #default="{ row }">
-              <el-switch v-model="row.ignored" @change="markSuggestionDirty(row)" />
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="110">
-            <template #default="{ row }">
-              <el-tag :type="row.saved ? 'success' : 'info'">{{ row.saved ? '已保存' : '未保存' }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="280" fixed="right">
+          <el-table-column label="操作" width="240" fixed="right">
             <template #default="{ row }">
               <el-space>
-                <el-button size="small" type="primary" @click="acceptSuggestion(row)">采纳推荐</el-button>
+                <el-switch v-model="row.ignored" @change="markSuggestionDirty(row)" />
+                <el-button size="small" type="primary" @click="acceptSuggestion(row)">确认</el-button>
                 <el-button size="small" @click="saveSuggestion(row)">{{ row.saved ? '更新' : '保存' }}</el-button>
                 <el-button size="small" type="danger" :disabled="!row.id" @click="removeMapping(row)">删除</el-button>
               </el-space>
@@ -80,27 +143,56 @@
           </el-table-column>
         </el-table>
       </div>
+      <div v-else class="field-mapping-workbench__empty-state">
+        <div class="field-mapping-workbench__empty-title">请先选择同步任务</div>
+        <div class="field-mapping-workbench__empty-desc">选择任务后，系统会读取源表和目标表字段，并自动生成推荐映射。</div>
+        <ol class="field-mapping-workbench__guide-list">
+          <li>选择同步任务</li>
+          <li>系统读取源表和目标表字段</li>
+          <li>自动生成推荐映射</li>
+          <li>人工确认低置信度字段</li>
+          <li>保存映射规则</li>
+        </ol>
+      </div>
     </div>
 
-    <div class="dashboard-panels dashboard-panels--compact">
-      <div class="panel-card glass-panel">
+    <div class="dashboard-panels dashboard-panels--compact field-mapping-workbench__bottom">
+      <div class="panel-card glass-panel field-mapping-workbench__mapping-card">
         <div class="section-title">
-          <h2>映射规则</h2>
-          <el-tag type="info" effect="dark">{{ selectedTaskName || '未选择任务' }}</el-tag>
+          <div class="section-title__left">
+            <h2>映射规则</h2>
+            <el-tag type="info" effect="light">{{ mappingStatusLabel }}</el-tag>
+          </div>
         </div>
-        <div class="table-shell">
-          <el-table :data="mappings" border stripe v-loading="loading">
+        <div class="field-mapping-workbench__panel-hint">
+          <span>{{ mappingRuleHint }}</span>
+        </div>
+        <div v-if="selectedTaskId" class="field-mapping-workbench__table-shell table-shell">
+          <el-table :data="mappings" border stripe v-loading="loading" :empty-text="selectedTaskId ? '当前没有可保存的映射规则。' : ''">
             <el-table-column prop="sourceColumnName" label="源字段" min-width="180" />
             <el-table-column prop="targetColumnName" label="目标字段" min-width="180" />
-            <el-table-column label="忽略" width="100">
+            <el-table-column prop="transformRule" label="转换规则" min-width="180">
+              <template #default="{ row }">
+                {{ row.transformRule || '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="defaultValue" label="默认值" min-width="140">
+              <template #default="{ row }">
+                {{ row.defaultValue || '—' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="是否忽略" width="110">
               <template #default="{ row }">
                 <el-tag :type="row.ignored ? 'warning' : 'success'">
                   {{ row.ignored ? '是' : '否' }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="defaultValue" label="默认值" min-width="140" />
-            <el-table-column prop="transformRule" label="转换规则" min-width="180" />
+            <el-table-column label="状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="mappingRowStatusTagType(row)" effect="light">{{ mappingRowStatusLabel(row) }}</el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="操作" width="220" fixed="right">
               <template #default="{ row }">
                 <el-space>
@@ -111,34 +203,96 @@
             </el-table-column>
           </el-table>
         </div>
+        <div v-else class="field-mapping-workbench__empty-state">
+          <div class="field-mapping-workbench__empty-title">请先选择同步任务</div>
+          <div class="field-mapping-workbench__empty-desc">选择任务后，这里会显示已确认并保存的字段映射规则。</div>
+        </div>
       </div>
 
-      <div class="panel-card glass-panel">
+      <div class="panel-card glass-panel field-mapping-workbench__context-card">
         <div class="section-title">
-          <h2>当前任务</h2>
-          <el-tag type="success" effect="dark">Task Context</el-tag>
+          <div class="section-title__left">
+            <h2>当前任务</h2>
+            <el-tag :type="currentTask ? 'success' : 'info'" effect="light">{{ currentTask ? '已选择' : '未选择' }}</el-tag>
+          </div>
+          <el-tag type="success" effect="light">任务上下文</el-tag>
         </div>
-        <div class="status-stack" v-if="currentTask">
-          <div class="status-item">
-            <span class="status-item__label">任务名</span>
-            <span class="status-item__value">{{ currentTask.taskName }}</span>
+        <div v-if="currentTask" class="field-mapping-context">
+          <div class="field-mapping-context__status-strip">
+            <div>
+              <div class="field-mapping-context__status-label">{{ taskAvailabilityLabel }}</div>
+              <div class="field-mapping-context__status-value">{{ taskAvailabilityHint }}</div>
+            </div>
+            <el-tag :type="mappingComplete ? 'success' : 'warning'" effect="light">
+              {{ mappingComplete ? '可用于同步' : '等待确认' }}
+            </el-tag>
           </div>
-          <div class="status-item">
-            <span class="status-item__label">源表</span>
-            <span class="status-item__value">{{ qualifiedTableName(currentTask.sourceSchemaName, currentTask.sourceTableName) }}</span>
+          <div class="field-mapping-context__summary">
+            <div class="field-mapping-context__title">{{ currentTask.taskName }}</div>
+            <div class="field-mapping-context__sub">{{ syncModeLabel(currentTask.syncMode) }}</div>
           </div>
-          <div class="status-item">
-            <span class="status-item__label">目标表</span>
-            <span class="status-item__value">{{ qualifiedTableName(currentTask.targetSchemaName, currentTask.targetTableName) }}</span>
+          <div class="field-mapping-context__rows">
+            <div class="field-mapping-context-row">
+              <span class="field-mapping-context-row__label">源数据源</span>
+              <span class="field-mapping-context-row__value">{{ sourceDatasourceName || '—' }}</span>
+            </div>
+            <div class="field-mapping-context-row">
+              <span class="field-mapping-context-row__label">目标数据源</span>
+              <span class="field-mapping-context-row__value">{{ targetDatasourceName || '—' }}</span>
+            </div>
+            <div class="field-mapping-context-row">
+              <span class="field-mapping-context-row__label">源表</span>
+              <span class="field-mapping-context-row__value">{{ qualifiedTableName(currentTask.sourceSchemaName, currentTask.sourceTableName) }}</span>
+            </div>
+            <div class="field-mapping-context-row">
+              <span class="field-mapping-context-row__label">目标表</span>
+              <span class="field-mapping-context-row__value">{{ qualifiedTableName(currentTask.targetSchemaName, currentTask.targetTableName) }}</span>
+            </div>
+            <div class="field-mapping-context-row">
+              <span class="field-mapping-context-row__label">字段数量</span>
+              <span class="field-mapping-context-row__value">源 {{ sourceFieldCount }} / 目标 {{ targetFieldCount }}</span>
+            </div>
+            <div class="field-mapping-context-row">
+              <span class="field-mapping-context-row__label">任务状态</span>
+              <span class="field-mapping-context-row__value">{{ currentTaskReadyText }}</span>
+            </div>
           </div>
-          <div class="status-item">
-            <span class="status-item__label">同步模式</span>
-            <span class="status-item__value">{{ syncModeLabel(currentTask.syncMode) }}</span>
+
+          <div class="field-mapping-context__missing">
+            <div class="field-mapping-context__missing-title">还需要处理</div>
+            <div class="field-mapping-context-row">
+              <span class="field-mapping-context-row__label">未映射源字段</span>
+              <span class="field-mapping-context-row__value">{{ pendingSourceFieldCount }}</span>
+            </div>
+            <div class="field-mapping-context-row">
+              <span class="field-mapping-context-row__label">低置信度推荐</span>
+              <span class="field-mapping-context-row__value">{{ lowConfidenceCount }}</span>
+            </div>
+            <div class="field-mapping-context-row">
+              <span class="field-mapping-context-row__label">已忽略字段</span>
+              <span class="field-mapping-context-row__value">{{ ignoredMappingCount }}</span>
+            </div>
+          </div>
+
+          <div class="field-mapping-context__advice">
+            <div class="field-mapping-context__advice-title">操作建议</div>
+            <ul>
+              <li>先处理低置信度推荐</li>
+              <li>再确认未映射字段</li>
+              <li>最后保存映射规则</li>
+            </ul>
+          </div>
+
+          <div class="field-mapping-context__footer">
+            <el-tag :type="mappingComplete ? 'success' : 'warning'" effect="light">
+              {{ mappingComplete ? '字段映射已完成，可以保存并用于同步任务。' : '仍有字段未确认，请检查低置信度或未映射字段。' }}
+            </el-tag>
           </div>
         </div>
-        <div v-else class="status-item">
-          <span class="status-item__label">提示</span>
-          <span class="status-item__value">先选择一个同步任务，再为该任务配置字段映射。</span>
+        <div v-else class="field-mapping-context field-mapping-context--empty">
+          <div class="field-mapping-context__title">请先选择一个同步任务</div>
+          <div class="field-mapping-context__sub">选择任务后，这里会展示任务上下文、缺失项和操作建议。</div>
+          <div class="field-mapping-context__empty-note">工作流会先确认上下文，再允许重新推荐和新建映射。</div>
         </div>
       </div>
     </div>
@@ -216,7 +370,7 @@
       <template #footer>
         <el-space>
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="submitMapping">保存</el-button>
+          <el-button type="primary" :loading="saving" @click="submitMapping">保存映射</el-button>
         </el-space>
       </template>
     </el-dialog>
@@ -274,6 +428,267 @@ const ignoredMappingCount = computed(function () {
 
 const suggestionCount = computed(function () {
   return suggestions.value.length
+})
+
+const confirmedCount = computed(function () {
+  return mappings.value.filter(function (item) {
+    return !item.ignored
+  }).length
+})
+
+const lowConfidenceCount = computed(function () {
+  return suggestions.value.filter(function (item) {
+    return typeof item.confidence === 'number' && item.confidence < 0.6 && !item.ignored
+  }).length
+})
+
+const pendingConfirmCount = computed(function () {
+  return suggestions.value.filter(function (item) {
+    return !item.saved && !item.ignored
+  }).length
+})
+
+const sourceFieldCount = computed(function () {
+  return countFields(sourceSchemas.value, form.sourceSchemaName, form.sourceTableName)
+})
+
+const targetFieldCount = computed(function () {
+  return countFields(targetSchemas.value, form.targetSchemaName, form.targetTableName)
+})
+
+const mappingCoverage = computed(function () {
+  if (!sourceFieldCount.value) {
+    return 0
+  }
+  return Math.min(100, Math.round((confirmedCount.value / sourceFieldCount.value) * 100))
+})
+
+const mappingCoverageText = computed(function () {
+  return mappingCoverage.value + '%'
+})
+
+const coverageHint = computed(function () {
+  if (!selectedTaskId.value) {
+    return '选择任务后计算覆盖率'
+  }
+  return '已确认 ' + confirmedCount.value + ' / ' + sourceFieldCount.value + ' 个源字段'
+})
+
+const pendingSourceFieldCount = computed(function () {
+  if (!sourceFieldCount.value) {
+    return 0
+  }
+  return Math.max(0, sourceFieldCount.value - mappings.value.length)
+})
+
+const canCreateMapping = computed(function () {
+  return !!selectedTaskId.value && hasFieldContext.value
+})
+
+const canRegenerate = computed(function () {
+  return !!selectedTaskId.value && hasFieldContext.value
+})
+
+const hasFieldContext = computed(function () {
+  return !!currentTask.value && !!currentTask.value.sourceDatasourceId && !!currentTask.value.targetDatasourceId
+})
+
+const recommendationStatusLabel = computed(function () {
+  if (!selectedTaskId.value) {
+    return '未选择任务'
+  }
+  if (suggestionCount.value === 0) {
+    return '0 条推荐'
+  }
+  if (pendingConfirmCount.value > 0) {
+    return '需要确认'
+  }
+  return '已完成'
+})
+
+const recommendationStatusTagType = computed(function () {
+  if (!selectedTaskId.value) {
+    return 'info'
+  }
+  if (pendingConfirmCount.value > 0) {
+    return 'warning'
+  }
+  if (suggestionCount.value > 0) {
+    return 'success'
+  }
+  return 'info'
+})
+
+const recommendationHint = computed(function () {
+  if (!selectedTaskId.value) {
+    return '请先选择同步任务'
+  }
+  if (!hasFieldContext.value) {
+    return '当前任务缺少源/目标字段信息，无法重新推荐'
+  }
+  if (suggestionCount.value === 0) {
+    return '可以点击重新推荐，或手动新建映射。'
+  }
+  return '系统会根据字段名归一化、常见别名和相似度匹配生成推荐映射。'
+})
+
+const regenerateDisabledReason = computed(function () {
+  if (!selectedTaskId.value) {
+    return '请先选择同步任务'
+  }
+  if (!hasFieldContext.value) {
+    return '当前任务缺少源/目标字段信息，无法重新推荐'
+  }
+  return '重新生成推荐映射'
+})
+
+const createMappingDisabledReason = computed(function () {
+  if (!selectedTaskId.value) {
+    return '请先选择同步任务'
+  }
+  if (!hasFieldContext.value) {
+    return '当前任务缺少源/目标字段信息，无法新建映射'
+  }
+  return '新建字段映射'
+})
+
+const mappingStatusLabel = computed(function () {
+  if (!selectedTaskId.value) {
+    return '未选择任务'
+  }
+  if (mappings.value.length === 0) {
+    return '0 条规则'
+  }
+  return '已配置 ' + mappings.value.length + ' 条'
+})
+
+const mappingRuleHint = computed(function () {
+  if (!selectedTaskId.value) {
+    return '选择任务后，这里会显示已确认并保存的字段映射规则。'
+  }
+  if (mappings.value.length === 0) {
+    return '还没有确认映射规则，请先从智能推荐中确认映射，或手动新建映射。'
+  }
+  return '已确认并保存的字段映射规则会用于同步执行。'
+})
+
+const sourceDatasourceName = computed(function () {
+  return currentTask.value ? currentTask.value.sourceDatasourceName || '' : ''
+})
+
+const targetDatasourceName = computed(function () {
+  return currentTask.value ? currentTask.value.targetDatasourceName || '' : ''
+})
+
+const recommendationSummary = computed(function () {
+  if (!selectedTaskId.value) {
+    return '请先选择同步任务'
+  }
+  if (suggestionCount.value === 0) {
+    return '还没有推荐映射'
+  }
+  return suggestionCount.value + ' 条推荐'
+})
+
+const mappingComplete = computed(function () {
+  return !!selectedTaskId.value && sourceFieldCount.value > 0 && pendingSourceFieldCount.value === 0 && pendingConfirmCount.value === 0 && lowConfidenceCount.value === 0
+})
+
+const taskRouteText = computed(function () {
+  if (!currentTask.value) {
+    return '请先选择一个同步任务，再为该任务配置字段映射。'
+  }
+  return qualifiedTableName(currentTask.value.sourceSchemaName, currentTask.value.sourceTableName) + ' → ' + qualifiedTableName(currentTask.value.targetSchemaName, currentTask.value.targetTableName)
+})
+
+const toolbarHint = computed(function () {
+  if (!selectedTaskId.value) {
+    return '先选任务，再查看推荐、补齐映射并保存。'
+  }
+  if (!hasFieldContext.value) {
+    return '当前任务上下文不足，先补齐源/目标字段信息。'
+  }
+  return mappingComplete.value ? '映射已完成，可继续保存或微调规则。' : '优先处理低置信度项，再补齐未映射字段。'
+})
+
+const recommendationEmptyTitle = computed(function () {
+  return selectedTaskId.value ? '暂无推荐映射，请点击“重新推荐”。' : '请先选择同步任务'
+})
+
+const recommendationEmptyHint = computed(function () {
+  return selectedTaskId.value ? '可以点击重新推荐，或直接新建映射。' : '选择任务后，系统会自动加载推荐映射。'
+})
+
+const mappingEmptyTitle = computed(function () {
+  return selectedTaskId.value ? '还没有确认映射规则' : '请先选择同步任务'
+})
+
+const mappingEmptyHint = computed(function () {
+  return selectedTaskId.value ? '请先从智能推荐中确认映射，或手动新建映射。' : '选择任务后，这里会显示已确认并保存的字段映射规则。'
+})
+
+function suggestionStatusLabel(row) {
+  if (row.ignored) {
+    return '已忽略'
+  }
+  if (row.saved) {
+    return '已保存'
+  }
+  return '待确认'
+}
+
+function suggestionStatusTagType(row) {
+  if (row.ignored) {
+    return 'info'
+  }
+  if (row.saved) {
+    return 'success'
+  }
+  return 'warning'
+}
+
+function mappingRowStatusLabel(row) {
+  if (row.ignored) {
+    return '已忽略'
+  }
+  if (row.defaultValue || row.transformRule) {
+    return '已配置'
+  }
+  return '待确认'
+}
+
+function mappingRowStatusTagType(row) {
+  if (row.ignored) {
+    return 'info'
+  }
+  if (row.defaultValue || row.transformRule) {
+    return 'success'
+  }
+  return 'warning'
+}
+
+const taskAvailabilityLabel = computed(function () {
+  return hasFieldContext.value ? '上下文完整' : '上下文不足'
+})
+
+const taskAvailabilityHint = computed(function () {
+  if (!currentTask.value) {
+    return '未选择任务'
+  }
+  if (!hasFieldContext.value) {
+    return '缺少源/目标字段信息'
+  }
+  return '可继续生成推荐和新建映射'
+})
+
+const currentTaskReadyText = computed(function () {
+  if (!currentTask.value) {
+    return '未选择任务'
+  }
+  if (!hasFieldContext.value) {
+    return '字段信息不足'
+  }
+  return mappingComplete.value ? '映射已准备就绪' : '映射可继续完善'
 })
 
 onMounted(function () {
@@ -415,9 +830,17 @@ async function loadSuggestions(taskId) {
   }
 }
 
+async function handleRegenerate() {
+  if (!canRegenerate.value) {
+    ElMessage.warning(recommendationHint.value)
+    return
+  }
+  await loadSuggestions(selectedTaskId.value)
+}
+
 function openCreateDialog() {
-  if (!selectedTaskId.value) {
-    ElMessage.warning('请先选择一个任务')
+  if (!canCreateMapping.value) {
+    ElMessage.warning(canRegenerate.value ? '请先选择一个任务' : '当前任务缺少源/目标字段信息，无法新建映射')
     return
   }
   editingId.value = null
@@ -688,5 +1111,24 @@ function syncModeLabel(value) {
     return '手动执行'
   }
   return '全量同步'
+}
+
+function countFields(schemas, schemaName, tableName) {
+  if (!schemaName || !tableName) {
+    return 0
+  }
+  const schema = (schemas || []).find(function (item) {
+    return item.schemaName && item.schemaName.toLowerCase() === String(schemaName).toLowerCase()
+  })
+  if (!schema || !schema.tables) {
+    return 0
+  }
+  const table = schema.tables.find(function (item) {
+    return item.tableName && item.tableName.toLowerCase() === String(tableName).toLowerCase()
+  })
+  if (!table || !table.columns) {
+    return 0
+  }
+  return table.columns.length
 }
 </script>

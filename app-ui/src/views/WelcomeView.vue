@@ -1,5 +1,5 @@
 <template>
-  <div class="welcome-page">
+  <div class="welcome-page standalone-page">
     <div class="welcome-page__backdrop welcome-page__backdrop--one"></div>
     <div class="welcome-page__backdrop welcome-page__backdrop--two"></div>
 

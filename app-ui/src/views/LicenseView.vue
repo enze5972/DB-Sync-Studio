@@ -1,9 +1,9 @@
 <template>
-  <div class="page-section license-page">
+  <div class="page-section license-page standalone-page">
     <div class="page-header">
       <div>
         <h1>License 授权</h1>
-        <p>本地授权状态、机器码与更新占位入口统一在这里管理。</p>
+        <p>本地授权状态、机器码与授权码入口统一在这里管理。</p>
       </div>
       <el-space>
         <el-button @click="reload">刷新</el-button>
@@ -30,7 +30,7 @@
       <div class="panel-card glass-panel">
         <div class="section-title">
           <h2>授权输入</h2>
-          <el-tag type="info" effect="dark">Local Only</el-tag>
+          <el-tag type="info" effect="dark">本地模式</el-tag>
         </div>
         <el-form label-width="120px">
           <el-form-item label="授权码">
@@ -41,12 +41,14 @@
               placeholder="输入本地授权码"
               autocomplete="off"
             />
+            <div class="settings-page__hint">当前版本仅本地校验，后续可接入正式授权服务。</div>
           </el-form-item>
           <el-form-item label="脱敏显示">
             <el-input :model-value="license.maskedLicenseKey || '-'" disabled />
           </el-form-item>
           <el-form-item label="机器码">
-            <el-input :model-value="license.machineCode || '-'" disabled />
+            <el-input :model-value="machineCodeDisplay" disabled />
+            <div class="settings-page__hint">完整机器码可通过“复制机器码”按钮复制。</div>
           </el-form-item>
         </el-form>
       </div>
@@ -55,7 +57,7 @@
     <div class="panel-card glass-panel">
       <div class="section-title">
         <h2>说明</h2>
-        <el-tag type="warning" effect="dark">Placeholder</el-tag>
+        <el-tag type="warning" effect="dark">占位功能</el-tag>
       </div>
       <p class="about-page__desc">
         当前阶段只做本地授权状态、机器码和授权码保存框架，不依赖云端服务。后续接入正式授权服务时，只需要替换本地校验逻辑和服务端签名校验实现。
@@ -73,6 +75,10 @@ const saving = ref(false)
 const clearing = ref(false)
 const licenseKeyInput = ref('')
 const license = ref({})
+
+const machineCodeDisplay = computed(function () {
+  return formatMachineCode(license.value.machineCode)
+})
 
 const statusTagType = computed(function () {
   const status = license.value && license.value.status
@@ -94,7 +100,7 @@ const licenseRows = computed(function () {
     { label: '提示', value: license.value.message || '-' },
     { label: '授权对象', value: license.value.licensedTo || '-' },
     { label: '授权码', value: license.value.maskedLicenseKey || '-' },
-    { label: '机器码', value: license.value.machineCode || '-' },
+    { label: '机器码', value: machineCodeDisplay.value },
     { label: '生效时间', value: formatTime(license.value.issuedAt) },
     { label: '到期时间', value: formatTime(license.value.expiresAt) }
   ]
@@ -190,5 +196,16 @@ function formatTime(value) {
     return '-'
   }
   return new Date(time).toLocaleString()
+}
+
+function formatMachineCode(value) {
+  const code = String(value || '').trim()
+  if (!code) {
+    return '-'
+  }
+  if (code.length <= 16) {
+    return code
+  }
+  return code.slice(0, 8) + '…' + code.slice(-8)
 }
 </script>

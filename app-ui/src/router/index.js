@@ -162,7 +162,23 @@ const routes = [
   }
 ]
 
-export default createRouter({
+const router = createRouter({
   history: createWebHashHistory(),
   routes
 })
+
+router.afterEach(function () {
+  requestAnimationFrame(function () {
+    const content = document.querySelector('.content')
+    if (content) {
+      content.scrollTop = 0
+    }
+    const standalonePage = document.querySelector('.standalone-page')
+    if (standalonePage) {
+      standalonePage.scrollTop = 0
+    }
+    window.scrollTo(0, 0)
+  })
+})
+
+export default router

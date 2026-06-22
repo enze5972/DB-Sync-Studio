@@ -1,9 +1,9 @@
 <template>
-  <div class="page-section">
-    <div class="page-header">
+  <div class="page-section metadata-scan-workbench">
+    <div class="page-header metadata-scan-workbench__header">
       <div>
         <h1>表结构扫描</h1>
-        <p>选择一个数据源，读取 schema、table、columns 和 primary key 信息。</p>
+        <p>选择数据源并扫描 schema、table、columns 和 primary key 信息，用于后续字段映射和同步任务配置。</p>
       </div>
       <el-space>
         <el-select
@@ -18,6 +18,10 @@
           扫描结构
         </el-button>
       </el-space>
+    </div>
+
+    <div class="metadata-scan-workbench__flow">
+      选择数据源 → 扫描结构 → 选择 table → 查看字段详情
     </div>
 
     <div class="stats-grid">
@@ -43,47 +47,55 @@
       </div>
     </div>
 
-    <div class="dashboard-panels dashboard-panels--compact">
-      <div class="panel-card glass-panel">
-        <div class="section-title">
+    <div class="dashboard-panels dashboard-panels--compact metadata-scan-workbench__panels">
+      <div class="panel-card glass-panel metadata-scan-workbench__panel metadata-scan-workbench__panel--left">
+        <div class="section-title section-title--compact metadata-scan-workbench__section-head">
           <h2>结构树</h2>
-          <el-tag type="info" effect="dark">{{ currentDatasourceName || '未扫描' }}</el-tag>
+          <el-tag :type="treeStatusTagType" effect="dark">{{ treeStatusLabel }}</el-tag>
         </div>
-        <el-tree
-          v-loading="scanning"
-          :data="treeData"
-          :props="treeProps"
-          node-key="id"
-          highlight-current
-          default-expand-all
-          @node-click="handleNodeClick"
-        >
-          <template #default="{ data }">
-            <span class="tree-node">
-              <span>{{ data.label }}</span>
-              <el-tag v-if="data.type === 'table'" size="small" type="success">TABLE</el-tag>
-              <el-tag v-else-if="data.type === 'schema'" size="small" type="info">SCHEMA</el-tag>
-            </span>
-          </template>
-        </el-tree>
-        <StateEmpty
-          v-if="!scanning && !treeData.length"
-          title="还没有扫描结果"
-          description="先选择一个数据源并执行表结构扫描。"
-          hint="扫描完成后这里会显示 schema、table 和字段层级。"
-          button-text="去选数据源"
-          @action="goToDatasource"
-        />
+        <div class="status-item metadata-scan-workbench__status">
+          <span class="status-item__label">流程提示</span>
+          <span class="status-item__value">{{ selectedDatasourceId ? '已选择数据源，下一步是扫描结构' : '未选择数据源，请先选择连接' }}</span>
+        </div>
+        <div class="metadata-scan-workbench__tree-shell">
+          <el-tree
+            v-loading="scanning"
+            :data="treeData"
+            :props="treeProps"
+            node-key="id"
+            highlight-current
+            default-expand-all
+            @node-click="handleNodeClick"
+          >
+            <template #default="{ data }">
+              <span class="tree-node">
+                <span>{{ data.label }}</span>
+                <el-tag v-if="data.type === 'table'" size="small" type="success">TABLE</el-tag>
+                <el-tag v-else-if="data.type === 'schema'" size="small" type="info">SCHEMA</el-tag>
+              </span>
+            </template>
+          </el-tree>
+          <StateEmpty
+            v-if="!scanning && !treeData.length"
+            class="metadata-scan-workbench__empty"
+            title="还没有扫描结果"
+            description="选择一个数据源并执行表结构扫描后，这里会显示 schema、table 和字段层级。"
+            hint="未选择数据源时，请先切换到一个连接；已选择数据源时，可以直接开始扫描结构。"
+            :button-text="selectedDatasourceId ? '开始扫描结构' : '去选择数据源'"
+            @action="selectedDatasourceId ? runScan() : goToDatasource()"
+          />
+        </div>
       </div>
 
-      <div class="panel-card glass-panel">
-        <div class="section-title">
-          <h2>字段详情</h2>
+      <div class="panel-card glass-panel metadata-scan-workbench__panel metadata-scan-workbench__panel--right">
+        <div class="section-title section-title--compact metadata-scan-workbench__section-head">
+          <h2>字段详情{{ selectedTableLabel ? ' · ' + selectedTableLabel : '' }}</h2>
           <el-space>
-            <el-tag type="success" effect="dark">{{ selectedTableLabel || '请选择 table' }}</el-tag>
+          <el-tag :type="selectedTable ? 'success' : 'info'" effect="dark">{{ selectedTableStateLabel }}</el-tag>
             <el-button
               size="small"
               :disabled="!selectedTable || !selectedDatasourceId"
+              :title="!selectedTable ? '请选择一个 table 后再进行结构比较' : ''"
               @click="openSchemaCompare"
             >
               结构比较
@@ -92,47 +104,55 @@
               size="small"
               type="primary"
               :disabled="!selectedTable"
+              :title="!selectedTable ? '请选择一个 table 后再进行数据预览' : ''"
               @click="openDataPreview"
             >
               数据预览
             </el-button>
           </el-space>
         </div>
-        <div class="table-shell">
-          <el-table :data="selectedColumns" border stripe>
-            <el-table-column prop="name" label="字段名" min-width="180" />
-            <el-table-column prop="dataType" label="类型" min-width="140" />
-            <el-table-column prop="columnSize" label="长度" width="100" />
-            <el-table-column prop="decimalDigits" label="小数位" width="100" />
-            <el-table-column label="主键" width="90">
-              <template #default="{ row }">
-                <el-tag :type="row.primaryKey ? 'warning' : 'info'">
-                  {{ row.primaryKey ? '是' : '否' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="自增" width="90">
-              <template #default="{ row }">
-                <el-tag :type="row.autoIncrement ? 'success' : 'info'">
-                  {{ row.autoIncrement ? '是' : '否' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="可空" width="90">
-              <template #default="{ row }">
-                <el-tag :type="row.nullable ? 'success' : 'danger'">
-                  {{ row.nullable ? '是' : '否' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="defaultValue" label="默认值" min-width="160" />
-          </el-table>
+        <div class="status-item metadata-scan-workbench__status">
+          <span class="status-item__label">当前状态</span>
+          <span class="status-item__value">{{ selectedTable ? '已选择 table，可查看字段详情' : '请选择一个 table' }}</span>
+        </div>
+        <div class="metadata-scan-workbench__detail-shell">
+          <div v-if="selectedTable" class="table-shell">
+            <el-table :data="selectedColumns" border stripe>
+              <el-table-column prop="name" label="字段名" min-width="180" />
+              <el-table-column prop="dataType" label="类型" min-width="140" />
+              <el-table-column prop="columnSize" label="长度" width="100" />
+              <el-table-column prop="decimalDigits" label="小数位" width="100" />
+              <el-table-column label="主键" width="90">
+                <template #default="{ row }">
+                  <el-tag :type="row.primaryKey ? 'warning' : 'info'">
+                    {{ row.primaryKey ? '是' : '否' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="自增" width="90">
+                <template #default="{ row }">
+                  <el-tag :type="row.autoIncrement ? 'success' : 'info'">
+                    {{ row.autoIncrement ? '是' : '否' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="可空" width="90">
+                <template #default="{ row }">
+                  <el-tag :type="row.nullable ? 'success' : 'danger'">
+                    {{ row.nullable ? '是' : '否' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="defaultValue" label="默认值" min-width="160" />
+            </el-table>
+          </div>
           <StateEmpty
-            v-if="!scanning && !selectedColumns.length"
-            title="还没有字段详情"
-            description="扫描一个表后，这里会显示字段、主键和默认值。"
-            hint="先在左侧树中选择 table，或者重新扫描数据源。"
-            button-text="重新扫描"
+            v-else
+            class="metadata-scan-workbench__empty"
+            title="请选择一个 table"
+            description="从左侧结构树选择 table 后，这里会显示字段名、类型、长度、小数位、主键和默认值。"
+            hint="你也可以先扫描结构，再回到左侧树中选择目标表。"
+            button-text="开始扫描结构"
             @action="runScan"
           />
         </div>
@@ -191,6 +211,30 @@ const selectedTableLabel = computed(function () {
     return ''
   }
   return qualifiedTableName(selectedTable.value.schemaName, selectedTable.value.tableName)
+})
+
+const selectedTableStateLabel = computed(function () {
+  return selectedTable.value ? '已选择 table' : '未选择 table'
+})
+
+const treeStatusLabel = computed(function () {
+  if (!selectedDatasourceId.value) {
+    return '未选择数据源'
+  }
+  if (!treeData.value.length) {
+    return '未扫描'
+  }
+  return '已扫描'
+})
+
+const treeStatusTagType = computed(function () {
+  if (!selectedDatasourceId.value) {
+    return 'info'
+  }
+  if (!treeData.value.length) {
+    return 'warning'
+  }
+  return 'success'
 })
 
 const schemaCount = computed(function () {
@@ -337,3 +381,57 @@ function qualifiedTableName(schemaName, tableName) {
   return schemaName + '.' + tableName
 }
 </script>
+
+<style scoped>
+.metadata-scan-workbench {
+  display: grid;
+  gap: 18px;
+}
+
+.metadata-scan-workbench__flow {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: var(--text-sub);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.metadata-scan-workbench__panels {
+  align-items: start;
+}
+
+.metadata-scan-workbench__panel {
+  min-height: 560px;
+}
+
+.metadata-scan-workbench__section-head {
+  margin-top: 0;
+}
+
+.metadata-scan-workbench__status {
+  margin-top: 10px;
+}
+
+.metadata-scan-workbench__tree-shell,
+.metadata-scan-workbench__detail-shell {
+  margin-top: 14px;
+}
+
+.metadata-scan-workbench__empty {
+  margin-top: 14px;
+}
+
+.tree-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 1280px) {
+  .metadata-scan-workbench__panel {
+    min-height: auto;
+  }
+}
+</style>

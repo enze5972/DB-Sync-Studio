@@ -1,5 +1,5 @@
 <template>
-  <div class="coming-soon">
+  <div class="coming-soon standalone-page">
     <div class="coming-soon__box glass-panel">
       <el-tag type="warning" effect="dark">Coming Soon</el-tag>
       <h2 class="coming-soon__title">{{ title }}</h2>

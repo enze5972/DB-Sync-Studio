@@ -34,7 +34,7 @@
       <div class="panel-card glass-panel">
         <div class="section-title">
           <h2>默认行为</h2>
-          <el-tag type="info" effect="dark">Preferences</el-tag>
+          <el-tag type="info" effect="dark">默认偏好</el-tag>
         </div>
         <el-form label-width="180px">
           <el-form-item label="日志保留天数">
@@ -62,7 +62,7 @@
     <div class="panel-card glass-panel">
       <div class="section-title">
         <h2>安全与启动</h2>
-        <el-tag type="warning" effect="dark">Sensitive</el-tag>
+        <el-tag type="warning" effect="dark">敏感设置</el-tag>
       </div>
       <el-form label-width="240px">
         <el-form-item label="允许危险 SQL">
@@ -88,7 +88,7 @@
     <div class="panel-card glass-panel">
       <div class="section-title">
         <h2>诊断预览</h2>
-        <el-tag type="info" effect="dark">Diagnostics</el-tag>
+        <el-tag type="info" effect="dark">诊断信息</el-tag>
       </div>
       <div class="status-stack">
         <div class="status-item" v-for="item in diagnosticsRows" :key="item.label">
@@ -157,9 +157,9 @@ const infoRows = computed(function () {
     { label: '前端版本', value: buildInfo.frontendVersion || '-' },
     { label: 'Java 核心版本', value: buildInfo.javaCoreVersion || '-' },
     { label: 'Tauri 版本', value: buildInfo.tauriVersion || '-' },
-    { label: 'SQLite schema version', value: buildInfo.sqliteSchemaVersion || '-' },
+    { label: 'SQLite 结构版本', value: buildInfo.sqliteSchemaVersion || '-' },
     { label: '构建时间', value: buildInfo.buildTime || '-' },
-    { label: 'Git commit', value: buildInfo.gitCommit || '-' },
+    { label: 'Git 提交', value: buildInfo.gitCommit || '-' },
     { label: '当前数据目录', value: diagnostics.value.applicationDirectory || '-' },
     { label: '当前日志目录', value: diagnostics.value.logsDirectory || '-' }
   ]

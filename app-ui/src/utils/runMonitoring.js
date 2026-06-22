@@ -149,7 +149,7 @@ function resolveRunTime(run) {
   return Number(run && (run.startedAt || run.endedAt || run.updatedAt || run.createdAt || 0)) || 0
 }
 
-function startOfDay(time) {
+export function startOfDay(time) {
   const date = new Date(time)
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
 }
