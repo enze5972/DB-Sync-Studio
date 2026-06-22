@@ -36,6 +36,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
 public class DesktopBackendServiceBatchRunTest {
@@ -250,7 +251,7 @@ public class DesktopBackendServiceBatchRunTest {
     }
 
     private static class TrackingFullSyncEngine extends JdbcFullSyncEngine {
-        private final List<Invocation> invocations = new ArrayList<Invocation>();
+        private final List<Invocation> invocations = new CopyOnWriteArrayList<Invocation>();
         private final CountDownLatch callsLatch = new CountDownLatch(2);
         private final CountDownLatch completedLatch = new CountDownLatch(1);
 
@@ -284,7 +285,7 @@ public class DesktopBackendServiceBatchRunTest {
     }
 
     private static class BlockingFullSyncEngine extends JdbcFullSyncEngine {
-        private final List<Invocation> invocations = new ArrayList<Invocation>();
+        private final List<Invocation> invocations = new CopyOnWriteArrayList<Invocation>();
         private final CountDownLatch firstCallStarted = new CountDownLatch(1);
         private final CountDownLatch releaseFirstCall = new CountDownLatch(1);
         private final CountDownLatch finished = new CountDownLatch(1);

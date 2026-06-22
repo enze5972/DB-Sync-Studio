@@ -82,7 +82,7 @@
             </div>
           </div>
 
-          <div class="sql-console-block sql-console-block--policy" :class="{ 'is-warning': allowDangerousSql }">
+          <div class="sql-console-block sql-console-block--policy" :class="{ 'is-warning': form.allowDangerousSql }">
             <div class="sql-console-block__title">安全策略</div>
             <div class="sql-console-block__desc">
               默认仅允许安全查询，危险语句需要手动开启。

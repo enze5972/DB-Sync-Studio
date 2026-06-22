@@ -1117,18 +1117,46 @@ function countFields(schemas, schemaName, tableName) {
   if (!schemaName || !tableName) {
     return 0
   }
+  const normalizedSchemaName = String(schemaName).toLowerCase()
+  const normalizedTableName = String(tableName).toLowerCase()
+  const copyFallbackTableName = normalizedTableName.endsWith('_copy') && normalizedTableName.length > 5
+    ? normalizedTableName.slice(0, -5)
+    : ''
+  let fallbackTable = null
   const schema = (schemas || []).find(function (item) {
-    return item.schemaName && item.schemaName.toLowerCase() === String(schemaName).toLowerCase()
+    return item.schemaName && item.schemaName.toLowerCase() === normalizedSchemaName
   })
-  if (!schema || !schema.tables) {
+  if (schema && schema.tables) {
+    const exactTable = schema.tables.find(function (item) {
+      return item.tableName && (
+        item.tableName.toLowerCase() === normalizedTableName ||
+        (copyFallbackTableName && item.tableName.toLowerCase() === copyFallbackTableName)
+      )
+    })
+    if (exactTable && exactTable.columns) {
+      return exactTable.columns.length
+    }
+  }
+  ;(schemas || []).forEach(function (item) {
+    if (!item || !item.tables) {
+      return
+    }
+    item.tables.forEach(function (table) {
+      if (!table || !table.tableName || !table.columns) {
+        return
+      }
+      const tableNameLower = table.tableName.toLowerCase()
+      if (tableNameLower !== normalizedTableName && (!copyFallbackTableName || tableNameLower !== copyFallbackTableName)) {
+        return
+      }
+      if (!fallbackTable) {
+        fallbackTable = table
+      }
+    })
+  })
+  if (!fallbackTable || !fallbackTable.columns) {
     return 0
   }
-  const table = schema.tables.find(function (item) {
-    return item.tableName && item.tableName.toLowerCase() === String(tableName).toLowerCase()
-  })
-  if (!table || !table.columns) {
-    return 0
-  }
-  return table.columns.length
+  return fallbackTable.columns.length
 }
 </script>

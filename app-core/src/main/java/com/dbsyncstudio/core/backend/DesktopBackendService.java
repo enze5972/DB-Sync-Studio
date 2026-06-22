@@ -2306,21 +2306,43 @@ public class DesktopBackendService {
     }
 
     private TableMetadata findTableMetadata(List<SchemaMetadata> schemas, String schemaName, String tableName) {
+        if (tableName == null || tableName.trim().length() == 0) {
+            return null;
+        }
+        String normalizedTableName = tableName.trim();
+        String copyFallbackTableName = normalizeCopyTableName(normalizedTableName);
+        TableMetadata fallback = null;
         for (SchemaMetadata schemaMetadata : schemas) {
-            if (schemaName != null && schemaName.trim().length() > 0
-                    && !schemaName.equalsIgnoreCase(schemaMetadata.getSchemaName())) {
-                continue;
-            }
             if (schemaMetadata.getTables() == null) {
                 continue;
             }
+            boolean schemaMatches = schemaName == null || schemaName.trim().length() == 0
+                    || schemaName.equalsIgnoreCase(schemaMetadata.getSchemaName());
             for (TableMetadata tableMetadata : schemaMetadata.getTables()) {
-                if (tableName.equalsIgnoreCase(tableMetadata.getTableName())) {
-                    return tableMetadata;
+                if (tableMetadata.getTableName() == null) {
+                    continue;
+                }
+                boolean tableMatches = normalizedTableName.equalsIgnoreCase(tableMetadata.getTableName())
+                        || (copyFallbackTableName != null && copyFallbackTableName.equalsIgnoreCase(tableMetadata.getTableName()));
+                if (tableMatches) {
+                    if (schemaMatches) {
+                        return tableMetadata;
+                    }
+                    if (fallback == null) {
+                        fallback = tableMetadata;
+                    }
                 }
             }
         }
-        return null;
+        return fallback;
+    }
+
+    private String normalizeCopyTableName(String tableName) {
+        String lowerCaseName = tableName.toLowerCase();
+        if (!lowerCaseName.endsWith("_copy") || tableName.length() <= 5) {
+            return null;
+        }
+        return tableName.substring(0, tableName.length() - 5);
     }
 
     private String buildPreviewSelectSql(DatasourceConfig datasource, TableMetadata tableMetadata, DataPreviewRequest request) {
