@@ -1,56 +1,53 @@
 <template>
   <div class="page-shell">
-    <div class="app-frame">
-      <aside class="sidebar glass-panel">
+    <div class="app-frame" :style="frameStyle">
+      <aside class="sidebar glass-panel" :class="{ 'is-collapsed': isCollapsed }">
         <div class="sidebar__brand">
-          <div class="brand-mark">DB</div>
-          <div>
+          <div class="sidebar__brand-mark" aria-hidden="true">DB</div>
+          <div v-if="!isCollapsed" class="sidebar__brand-copy">
             <div class="sidebar__title">DB Sync Studio</div>
             <div class="sidebar__subtitle">Desktop database sync studio</div>
           </div>
+          <el-button
+            class="sidebar__collapse-toggle"
+            text
+            :aria-label="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
+            @click="toggleSidebar"
+          >
+            <el-icon>
+              <component :is="isCollapsed ? Expand : Fold" />
+            </el-icon>
+          </el-button>
         </div>
 
-        <el-menu
-          router
-          :default-active="activePath"
-          class="sidebar-menu"
-          background-color="transparent"
-          text-color="#334155"
-          active-text-color="#2563eb"
-        >
-          <el-menu-item-group title="开始">
-            <el-menu-item index="/">首页</el-menu-item>
-            <el-menu-item index="/welcome">快速开始</el-menu-item>
-          </el-menu-item-group>
-          <el-menu-item-group title="数据准备">
-            <el-menu-item index="/datasource">数据源管理</el-menu-item>
-            <el-menu-item index="/metadata">表结构扫描</el-menu-item>
-            <el-menu-item index="/tasks">同步任务</el-menu-item>
-            <el-menu-item index="/task-wizard">创建向导</el-menu-item>
-          </el-menu-item-group>
-          <el-menu-item-group title="数据工具">
-            <el-menu-item index="/preview">数据预览</el-menu-item>
-            <el-menu-item index="/sql">SQL 编辑器</el-menu-item>
-            <el-menu-item index="/schema-compare">表结构比较</el-menu-item>
-            <el-menu-item index="/mapping">字段映射</el-menu-item>
-            <el-menu-item index="/validation">数据校验</el-menu-item>
-          </el-menu-item-group>
-          <el-menu-item-group title="运行运维">
-            <el-menu-item index="/run-monitoring">运行监控</el-menu-item>
-            <el-menu-item index="/alert-settings">告警设置</el-menu-item>
-            <el-menu-item index="/alert-history">告警历史</el-menu-item>
-            <el-menu-item index="/execution-history">执行历史</el-menu-item>
-            <el-menu-item index="/task-run">Run 详情</el-menu-item>
-            <el-menu-item index="/schedule-center">调度中心</el-menu-item>
-            <el-menu-item index="/logs">执行日志</el-menu-item>
-          </el-menu-item-group>
-          <el-menu-item-group title="系统">
-            <el-menu-item index="/settings">软件设置</el-menu-item>
-            <el-menu-item index="/license">License 授权</el-menu-item>
-            <el-menu-item index="/about">关于</el-menu-item>
-            <el-menu-item index="/help">帮助文档</el-menu-item>
-          </el-menu-item-group>
-        </el-menu>
+        <div class="sidebar__menu-scroll">
+          <el-menu
+            ref="menuRef"
+            router
+            unique-opened
+            :collapse="isCollapsed"
+            :default-active="activeMenuPath"
+            class="sidebar-menu"
+            background-color="transparent"
+            text-color="#334155"
+            active-text-color="#2563eb"
+          >
+            <el-sub-menu v-for="group in menuGroups" :key="group.key" :index="group.key">
+              <template #title>
+                <el-icon class="sidebar-menu__icon">
+                  <component :is="group.icon" />
+                </el-icon>
+                <span class="sidebar-menu__label sidebar-menu__label--group">{{ group.title }}</span>
+              </template>
+              <el-menu-item v-for="item in group.children" :key="item.key" :index="item.path">
+                <el-icon class="sidebar-menu__icon">
+                  <component :is="item.icon" />
+                </el-icon>
+                <span class="sidebar-menu__label">{{ item.title }}</span>
+              </el-menu-item>
+            </el-sub-menu>
+          </el-menu>
+        </div>
       </aside>
 
       <main class="content glass-panel">
@@ -61,9 +58,75 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { Expand, Fold } from '@element-plus/icons-vue'
+import { menuActivePathByRoutePath, menuGroupKeyByRoutePath, menuGroups } from '../config/menu'
+
+const STORAGE_KEY = 'db-sync-studio.sidebar-collapsed'
 
 const route = useRoute()
-const activePath = computed(() => route.path)
+const menuRef = ref(null)
+const isCollapsed = ref(readCollapsedState())
+
+const activeMenuPath = computed(function () {
+  return route.meta.menuActivePath || menuActivePathByRoutePath[route.path] || route.path
+})
+
+const activeGroupKey = computed(function () {
+  return route.meta.menuGroupKey || menuGroupKeyByRoutePath[route.path] || menuGroupKeyByRoutePath[activeMenuPath.value] || 'workspace'
+})
+
+const frameStyle = computed(function () {
+  return {
+    '--sidebar-width': isCollapsed.value ? '68px' : '240px'
+  }
+})
+
+onMounted(function () {
+  syncOpenedGroup()
+})
+
+watch([activeGroupKey, isCollapsed], function () {
+  nextTick(syncOpenedGroup)
+})
+
+watch(isCollapsed, function (value) {
+  persistCollapsedState(value)
+})
+
+function toggleSidebar() {
+  isCollapsed.value = !isCollapsed.value
+}
+
+function syncOpenedGroup() {
+  if (isCollapsed.value || !menuRef.value) {
+    return
+  }
+  if (typeof menuRef.value.open === 'function') {
+    menuRef.value.open(activeGroupKey.value)
+  }
+}
+
+function readCollapsedState() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) === '1'
+  } catch (error) {
+    return false
+  }
+}
+
+function persistCollapsedState(value) {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.setItem(STORAGE_KEY, value ? '1' : '0')
+  } catch (error) {
+    // Ignore storage errors so the sidebar still works in private mode.
+  }
+}
 </script>

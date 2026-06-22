@@ -451,7 +451,7 @@ const filterStateHint = computed(function () {
 
 const promptText = computed(function () {
   if (!selectedTaskId.value) {
-    return '请选择一个同步任务，再查看执行历史；也可以直接从左侧菜单进入 Run 详情。'
+    return '请选择一个同步任务，再查看执行历史；也可以从运行记录进入 Run 详情。'
   }
   if (!runs.value.length) {
     return '当前任务还没有执行历史，执行一次同步任务后会生成 run 记录。'
@@ -626,7 +626,7 @@ function openRunDetail(row) {
     return
   }
   router.push({
-    path: '/execution-history/detail',
+    path: '/task-run',
     query: {
       taskId: selectedTaskId.value,
       runId: row.runId
@@ -639,7 +639,7 @@ function openRunTables(row) {
     return
   }
   router.push({
-    path: '/execution-history/detail',
+    path: '/task-run',
     query: {
       taskId: selectedTaskId.value,
       runId: row.runId,

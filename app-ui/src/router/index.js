@@ -116,11 +116,20 @@ const routes = [
       {
         path: 'execution-history/detail',
         name: 'execution-history-detail',
+        meta: {
+          hiddenInMenu: true,
+          menuActivePath: '/task-run',
+          menuGroupKey: 'run-ops'
+        },
         component: TaskRunDetailView
       },
       {
         path: 'task-run',
         name: 'task-run',
+        meta: {
+          menuActivePath: '/task-run',
+          menuGroupKey: 'run-ops'
+        },
         component: TaskRunDetailView
       },
       {

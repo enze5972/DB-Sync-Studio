@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/tauri'
+import { buildRecentRunRecords } from '../utils/runDetail.js'
 
 let backendBaseUrlPromise = null
 
@@ -299,14 +300,31 @@ export async function listTaskRunsForMonitoring(limitPerTask) {
   }
 }
 
+export async function getRecentRuns(limitPerTask) {
+  const snapshot = await listTaskRunsForMonitoring(limitPerTask)
+  return buildRecentRunRecords({
+    tasks: snapshot.tasks,
+    runsByTaskId: snapshot.runsByTaskId,
+    limitPerTask: typeof limitPerTask === 'number' ? limitPerTask : 8
+  })
+}
+
 export async function getTaskRun(taskId, runId, limit) {
   return apiRequest('/api/tasks/' + taskId + '/runs/' + encodeURIComponent(runId) + buildQueryString({
     limit: typeof limit === 'number' ? limit : ''
   }))
 }
 
+export async function getRunDetail(taskId, runId, limit) {
+  return getTaskRun(taskId, runId, limit)
+}
+
 export async function listTaskRunTables(taskId, runId) {
   return apiRequest('/api/tasks/' + taskId + '/runs/' + encodeURIComponent(runId) + '/tables')
+}
+
+export async function getRunTables(taskId, runId) {
+  return listTaskRunTables(taskId, runId)
 }
 
 export async function listTaskRunLogs(taskId, runId, params) {
@@ -320,6 +338,10 @@ export async function listTaskRunLogs(taskId, runId, params) {
     endTime: params && params.endTime,
     limit: params && typeof params.limit === 'number' ? params.limit : ''
   }))
+}
+
+export async function getRunLogs(taskId, runId, params) {
+  return listTaskRunLogs(taskId, runId, params)
 }
 
 export async function getTaskSchedule(id) {
