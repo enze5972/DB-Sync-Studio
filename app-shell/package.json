@@ -6,7 +6,7 @@
     "dev": "npm --prefix ../app-ui run dev",
     "build-ui": "npm --prefix ../app-ui run build",
     "tauri:dev": "cargo tauri dev",
-    "tauri:build": "npm run build-ui && cargo tauri build",
+    "tauri:build": "cargo tauri build",
     "package": "node ../scripts/package.js",
     "package:linux": "node ../scripts/package.js linux",
     "package:macos": "node ../scripts/package.js macos",

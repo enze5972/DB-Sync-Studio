@@ -18,10 +18,16 @@ jobs:
         include:
           - os: ubuntu-22.04
             platform: linux
-          - os: macos-latest
+            artifact_name: release-linux
+          - os: macos-13
             platform: macos
+            artifact_name: release-macos-x64
+          - os: macos-14
+            platform: macos
+            artifact_name: release-macos-aarch64
           - os: windows-latest
             platform: windows
+            artifact_name: release-windows
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -80,7 +86,7 @@ jobs:
       - name: Upload packaged output
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.platform }}
+          name: ${{ matrix.artifact_name }}
           path: release/${{ matrix.platform }}
           if-no-files-found: error
 
@@ -100,8 +106,14 @@ jobs:
       - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-macos
-          path: dist/macos
+          name: release-macos-x64
+          path: dist/macos-x64
+
+      - name: Download macOS arm64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-macos-aarch64
+          path: dist/macos-aarch64
 
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
@@ -119,6 +131,7 @@ jobs:
             dist/linux/**/*.AppImage
             dist/linux/**/*.deb
             dist/linux/**/*.rpm
-            dist/macos/**/*.dmg
-            dist/windows/**/*.msi
-            dist/windows/**/*.exe
+            dist/macos-x64/**/DB.Sync.Studio_*.dmg
+            dist/macos-aarch64/**/DB.Sync.Studio_*.dmg
+            dist/windows/**/DB.Sync.Studio_*_en-US.msi
+            dist/windows/**/DB.Sync.Studio_*-setup.exe

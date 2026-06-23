@@ -173,7 +173,8 @@ function buildTauriBundle() {
   validateBundleInputs();
 
   const tauriEnv = Object.assign({}, process.env, {
-    PATH: buildToolPath()
+    PATH: buildToolPath(),
+    DB_SYNC_SKIP_TAURI_UI_BUILD: '1'
   });
   applyLinuxRuntimeLibraryPath(tauriEnv);
 
@@ -354,11 +355,15 @@ function findMacosAppBundle(bundleDir) {
 }
 
 function resolveFinalDmgName(bundleDir) {
+  const finalDmgFiles = findFiles(path.join(bundleDir, 'dmg'), /^DB Sync Studio_.*\.dmg$/i);
+  if (finalDmgFiles.length > 0) {
+    return path.basename(finalDmgFiles[0]);
+  }
   const rwDmgFiles = findFiles(path.join(bundleDir, 'macos'), /^rw\..*\.dmg$/i);
   if (rwDmgFiles.length > 0) {
     return path.basename(rwDmgFiles[0]).replace(/^rw\./, '');
   }
-  return 'DB Sync Studio_0.1.0_x64.dmg';
+  return 'DB Sync Studio_0.1.0_' + (process.arch === 'arm64' ? 'aarch64' : 'x64') + '.dmg';
 }
 
 function createApplicationsLink(targetDir) {
