@@ -68,7 +68,10 @@ pub fn start_backend(app: AppHandle) -> Result<BackendHandle, io::Error> {
         Ok(child) => child,
         Err(err) => {
             let _ = log_startup_line(&mut log_file, &format!("Failed to launch backend: {}", err));
-            return Err(io::Error::new(io::ErrorKind::Other, format!("Failed to launch backend: {}", err)));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to launch backend: {}", err),
+            ));
         }
     };
 
@@ -91,10 +94,9 @@ pub fn start_backend(app: AppHandle) -> Result<BackendHandle, io::Error> {
 fn resolve_backend_root(app: &AppHandle) -> Result<PathBuf, io::Error> {
     let direct_backend = app.path_resolver().resolve_resource("backend");
     let nested_backend = app.path_resolver().resolve_resource("resources/backend");
-    if let Some(backend_root) = resolve_existing_backend_root(
-        direct_backend.as_deref(),
-        nested_backend.as_deref(),
-    ) {
+    if let Some(backend_root) =
+        resolve_existing_backend_root(direct_backend.as_deref(), nested_backend.as_deref())
+    {
         return Ok(backend_root);
     }
     Err(io::Error::new(
@@ -109,8 +111,12 @@ fn resolve_existing_backend_root(
 ) -> Option<PathBuf> {
     direct_candidate
         .filter(|path| path.exists())
-        .map(Path::to_path_buf)
-        .or_else(|| nested_candidate.filter(|path| path.exists()).map(Path::to_path_buf))
+        .map(normalize_windows_process_path)
+        .or_else(|| {
+            nested_candidate
+                .filter(|path| path.exists())
+                .map(normalize_windows_process_path)
+        })
 }
 
 fn resolve_java_executable(backend_root: &Path) -> PathBuf {
@@ -130,6 +136,23 @@ fn resolve_java_executable(backend_root: &Path) -> PathBuf {
     PathBuf::from("java")
 }
 
+fn normalize_windows_process_path(path: &Path) -> PathBuf {
+    let raw = path.to_string_lossy();
+    if let Some(stripped) = raw.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{}", stripped));
+    }
+    if let Some(stripped) = raw.strip_prefix(r"\??\UNC\") {
+        return PathBuf::from(format!(r"\\{}", stripped));
+    }
+    if let Some(stripped) = raw.strip_prefix(r"\\?\") {
+        return PathBuf::from(stripped);
+    }
+    if let Some(stripped) = raw.strip_prefix(r"\??\") {
+        return PathBuf::from(stripped);
+    }
+    path.to_path_buf()
+}
+
 fn build_classpath(backend_root: &Path) -> String {
     let jar = backend_root.join("app-core.jar");
     let lib_dir = backend_root.join("lib");
@@ -142,11 +165,21 @@ fn build_classpath(backend_root: &Path) -> String {
 
 fn allocate_port() -> Result<u16, io::Error> {
     TcpListener::bind("127.0.0.1:0")
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Failed to allocate backend port: {}", err)))
+        .map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to allocate backend port: {}", err),
+            )
+        })
         .and_then(|listener| {
             let port = listener
                 .local_addr()
-                .map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Failed to read backend port: {}", err)))?
+                .map_err(|err| {
+                    io::Error::new(
+                        io::ErrorKind::Other,
+                        format!("Failed to read backend port: {}", err),
+                    )
+                })?
                 .port();
             drop(listener);
             Ok(port)
@@ -202,20 +235,29 @@ fn resolve_app_directory() -> PathBuf {
         if let Some(appdata) = env::var_os("APPDATA") {
             return PathBuf::from(appdata).join(".db-sync-studio");
         }
-        return user_home.join("AppData").join("Roaming").join(".db-sync-studio");
+        return user_home
+            .join("AppData")
+            .join("Roaming")
+            .join(".db-sync-studio");
     }
     if cfg!(target_os = "macos") {
-        return user_home.join("Library").join("Application Support").join(".db-sync-studio");
+        return user_home
+            .join("Library")
+            .join("Application Support")
+            .join(".db-sync-studio");
     }
     if let Some(xdg_data_home) = env::var_os("XDG_DATA_HOME") {
         return PathBuf::from(xdg_data_home).join(".db-sync-studio");
     }
-    user_home.join(".local").join("share").join(".db-sync-studio")
+    user_home
+        .join(".local")
+        .join("share")
+        .join(".db-sync-studio")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_existing_backend_root;
+    use super::{normalize_windows_process_path, resolve_existing_backend_root};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -232,7 +274,7 @@ mod tests {
             Some(Path::new(&direct_backend)),
             Some(Path::new(&nested_backend)),
         )
-            .expect("backend dir should resolve");
+        .expect("backend dir should resolve");
 
         assert_eq!(resolved, direct_backend);
 
@@ -249,11 +291,33 @@ mod tests {
             Some(Path::new(&temp_dir.join("backend"))),
             Some(Path::new(&nested_backend)),
         )
-            .expect("nested backend dir should resolve");
+        .expect("nested backend dir should resolve");
 
         assert_eq!(resolved, nested_backend);
 
         fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn normalize_windows_process_path_strips_verbatim_drive_prefix() {
+        let normalized = normalize_windows_process_path(Path::new(
+            r"\\?\C:\Users\Test\AppData\Local\DB Sync Studio\backend",
+        ));
+        assert_eq!(
+            normalized,
+            PathBuf::from(r"C:\Users\Test\AppData\Local\DB Sync Studio\backend")
+        );
+    }
+
+    #[test]
+    fn normalize_windows_process_path_strips_verbatim_unc_prefix() {
+        let normalized = normalize_windows_process_path(Path::new(
+            r"\\?\UNC\server\share\DB Sync Studio\backend",
+        ));
+        assert_eq!(
+            normalized,
+            PathBuf::from(r"\\server\share\DB Sync Studio\backend")
+        );
     }
 
     fn make_temp_dir(prefix: &str) -> PathBuf {
