@@ -381,6 +381,9 @@ function writeTauriBundleManifest(bundleDir) {
 }
 
 function ensureDmgPresent() {
+  if (PLATFORM !== 'macos') {
+    return;
+  }
   const dmgFiles = listFilesRecursive(TAURI_BUNDLE_DIR).filter(function (filePath) {
     return /\.dmg$/i.test(filePath);
   });
