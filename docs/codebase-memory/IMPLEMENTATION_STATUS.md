@@ -202,4 +202,4 @@
 - 2026-06-23: `scripts/package-env.test.js` 已补上并通过，锁定 Windows `Path` / `PATH` 回归
 - 2026-06-23: Windows desktop shell 启动日志已改为写入 `~/.db-sync-studio/logs/startup.log`（Windows 实际路径为 `APPDATA\.db-sync-studio\logs\startup.log`），后端 stdout/stderr 也会一起写入
 - 2026-06-23: Windows 安装包根目录只有 exe/uninstall，`backend` 资源未随包安装；`app-shell/src-tauri/tauri.conf.json` 已补 `bundle.resources = ["resources/backend"]`，后续需重新打包验证 `resolve_resource("backend")`
-- 2026-06-23: Linux release workflow 的 AppImage 步骤需要额外安装 `libfuse2` 和 `file`，否则 `cargo tauri build` 会在 `error running appimage.sh` 处失败；已补到 workflow 依赖列表，后续需重新跑 release 验证 AppImage、deb、rpm 都能产出
+- 2026-06-23: Linux release workflow 的 AppImage 步骤需要额外安装 `libfuse2`、`file`、`squashfs-tools` 和 `libayatana-appindicator3-dev`，否则 `cargo tauri build` 会在 `error running appimage.sh` 处失败；已补到 workflow 依赖列表，后续需重新跑 release 验证 AppImage、deb、rpm 都能产出
