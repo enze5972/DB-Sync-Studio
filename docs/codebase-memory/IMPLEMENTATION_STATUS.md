@@ -198,3 +198,5 @@
 - 2026-06-23: `scripts/package.js` 已改为自动选择 JDK 17 并默认跳过后端测试，`scripts/package.sh` 已成功打出 macOS release 到 `release/macos`
 - 2026-06-23: `ScriptJsTransformerTest` 的只读输入写入断言已按预期通过；默认 `node scripts/package.js macos` 已成功产出 `release/macos`，带测试模式仍会受真实 MySQL 集成测试环境影响
 - 2026-06-23: GitHub release workflow 的 Windows job 需要显式安装 Maven 才能跑 `scripts/package.js windows`
+- 2026-06-23: Windows 打包脚本在重建 Java 环境时需要同时保留 `Path` 和 `PATH`，否则会把 Maven 路径冲掉并导致 `mvn` 不可用
+- 2026-06-23: `scripts/package-env.test.js` 已补上并通过，锁定 Windows `Path` / `PATH` 回归

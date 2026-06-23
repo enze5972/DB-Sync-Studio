@@ -577,8 +577,8 @@ function buildJavaEnv() {
   const env = Object.assign({}, process.env);
   env.JAVA_HOME = JAVA_HOME_REQUIRED;
   const javaBinDir = path.join(JAVA_HOME_REQUIRED, 'bin');
-  const existingPath = env.PATH || '';
-  env.PATH = javaBinDir + path.delimiter + existingPath;
+  const existingPath = getEnvPath(env);
+  setEnvPath(env, javaBinDir + path.delimiter + existingPath);
   return env;
 }
 
@@ -605,8 +605,20 @@ function buildToolPath() {
   extras.push(path.join(os.homedir(), '.cargo', 'bin'));
   extras.push('/usr/local/opt/rustup/bin');
   extras.push('/opt/homebrew/bin');
-  const existing = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  const existing = getEnvPath(process.env).split(path.delimiter).filter(Boolean);
   return extras.concat(existing).filter(Boolean).join(path.delimiter);
+}
+
+function getEnvPath(env) {
+  if (!env) {
+    return '';
+  }
+  return env.PATH || env.Path || '';
+}
+
+function setEnvPath(env, value) {
+  env.PATH = value;
+  env.Path = value;
 }
 
 function run(command, cwd, extraEnv) {
