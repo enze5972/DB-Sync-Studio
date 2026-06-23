@@ -52,7 +52,11 @@ jobs:
       - name: Install Maven
         if: matrix.platform == 'windows'
         shell: pwsh
-        run: choco install maven --no-progress -y
+        run: |
+          choco install maven --no-progress -y
+          Add-Content -Path $env:GITHUB_PATH -Value "C:\\ProgramData\\chocolatey\\bin"
+          $env:PATH = "C:\\ProgramData\\chocolatey\\bin;$env:PATH"
+          mvn -version
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked --version 1.6.3
