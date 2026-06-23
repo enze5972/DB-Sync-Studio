@@ -201,3 +201,4 @@
 - 2026-06-23: Windows 打包脚本在重建 Java 环境时需要同时保留 `Path` 和 `PATH`，否则会把 Maven 路径冲掉并导致 `mvn` 不可用
 - 2026-06-23: `scripts/package-env.test.js` 已补上并通过，锁定 Windows `Path` / `PATH` 回归
 - 2026-06-23: Windows desktop shell 启动日志已改为写入 `~/.db-sync-studio/logs/startup.log`（Windows 实际路径为 `APPDATA\.db-sync-studio\logs\startup.log`），后端 stdout/stderr 也会一起写入
+- 2026-06-23: Windows 安装包根目录只有 exe/uninstall，`backend` 资源未随包安装；`app-shell/src-tauri/tauri.conf.json` 已补 `bundle.resources = ["resources/backend"]`，后续需重新打包验证 `resolve_resource("backend")`
