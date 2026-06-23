@@ -13,9 +13,9 @@
     "bundle": {
       "active": true,
       "identifier": "com.dbsyncstudio.app",
-      "resources": [
-        "resources/backend"
-      ],
+      "resources": {
+        "resources/backend": "backend"
+      },
       "icon": [
         "icons/icon.ico",
         "icons/icon.icns",

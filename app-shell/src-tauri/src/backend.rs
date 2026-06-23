@@ -89,17 +89,28 @@ pub fn start_backend(app: AppHandle) -> Result<BackendHandle, io::Error> {
 }
 
 fn resolve_backend_root(app: &AppHandle) -> Result<PathBuf, io::Error> {
-    let backend_root = app
-        .path_resolver()
-        .resolve_resource("backend")
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Backend resources were not found"))?;
-    if !backend_root.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            format!("Backend resource directory not found: {}", backend_root.display()),
-        ));
+    let direct_backend = app.path_resolver().resolve_resource("backend");
+    let nested_backend = app.path_resolver().resolve_resource("resources/backend");
+    if let Some(backend_root) = resolve_existing_backend_root(
+        direct_backend.as_deref(),
+        nested_backend.as_deref(),
+    ) {
+        return Ok(backend_root);
     }
-    Ok(backend_root)
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        "Backend resources were not found in backend or resources/backend",
+    ))
+}
+
+fn resolve_existing_backend_root(
+    direct_candidate: Option<&Path>,
+    nested_candidate: Option<&Path>,
+) -> Option<PathBuf> {
+    direct_candidate
+        .filter(|path| path.exists())
+        .map(Path::to_path_buf)
+        .or_else(|| nested_candidate.filter(|path| path.exists()).map(Path::to_path_buf))
 }
 
 fn resolve_java_executable(backend_root: &Path) -> PathBuf {
@@ -200,4 +211,58 @@ fn resolve_app_directory() -> PathBuf {
         return PathBuf::from(xdg_data_home).join(".db-sync-studio");
     }
     user_home.join(".local").join("share").join(".db-sync-studio")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_existing_backend_root;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn resolve_existing_backend_root_prefers_direct_backend_dir() {
+        let temp_dir = make_temp_dir("backend-direct");
+        let direct_backend = temp_dir.join("backend");
+        let nested_backend = temp_dir.join("resources").join("backend");
+        fs::create_dir_all(&direct_backend).unwrap();
+        fs::create_dir_all(&nested_backend).unwrap();
+
+        let resolved = resolve_existing_backend_root(
+            Some(Path::new(&direct_backend)),
+            Some(Path::new(&nested_backend)),
+        )
+            .expect("backend dir should resolve");
+
+        assert_eq!(resolved, direct_backend);
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[test]
+    fn resolve_existing_backend_root_falls_back_to_nested_resources_backend_dir() {
+        let temp_dir = make_temp_dir("backend-nested");
+        let nested_backend = temp_dir.join("resources").join("backend");
+        fs::create_dir_all(&nested_backend).unwrap();
+
+        let resolved = resolve_existing_backend_root(
+            Some(Path::new(&temp_dir.join("backend"))),
+            Some(Path::new(&nested_backend)),
+        )
+            .expect("nested backend dir should resolve");
+
+        assert_eq!(resolved, nested_backend);
+
+        fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    fn make_temp_dir(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("db-sync-studio-{}-{}", prefix, unique));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 }
