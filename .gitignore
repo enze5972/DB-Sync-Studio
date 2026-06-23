@@ -5,6 +5,14 @@
 **/node_modules/
 release/
 docs/
+# test artifacts are local-only and should not be committed
+**/test/
+**/tests/
+**/*.test.*
+**/*.spec.*
+**/*Test.*
+**/*Tests.*
+**/*_test.*
 AGENTS.md
 app-shell/src-tauri/resources/backend/app-core.jar
 app-shell/src-tauri/resources/backend/lib/
