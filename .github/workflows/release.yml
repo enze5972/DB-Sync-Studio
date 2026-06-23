@@ -67,6 +67,16 @@ jobs:
       - name: Build packaged artifacts
         run: node scripts/package.js ${{ matrix.platform }}
 
+      - name: Upload Linux AppImage diagnostics
+        if: failure() && matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage-debug
+          path: |
+            app-shell/src-tauri/target/release/bundle/appimage
+            app-shell/src-tauri/target/release/bundle/appimage_deb
+          if-no-files-found: warn
+
       - name: Upload packaged output
         uses: actions/upload-artifact@v4
         with:

@@ -203,3 +203,4 @@
 - 2026-06-23: Windows desktop shell 启动日志已改为写入 `~/.db-sync-studio/logs/startup.log`（Windows 实际路径为 `APPDATA\.db-sync-studio\logs\startup.log`），后端 stdout/stderr 也会一起写入
 - 2026-06-23: Windows 安装包根目录只有 exe/uninstall，`backend` 资源未随包安装；`app-shell/src-tauri/tauri.conf.json` 已补 `bundle.resources = ["resources/backend"]`，后续需重新打包验证 `resolve_resource("backend")`
 - 2026-06-23: Linux release workflow 的 AppImage 步骤在 tag `v0.1.9` 使用 `libappindicator3-dev` 时已成功产出；随后把它替换成 `libayatana-appindicator3-dev` 后出现 `error running appimage.sh` 回归，因此 workflow 已恢复 `libappindicator3-dev`，并保留 `libfuse2`、`file`、`squashfs-tools` 供 AppImage 产物使用；`scripts/package.js` 也已把 `.dmg` 缺失警告限制到 macOS，后续需重新跑 release 验证 AppImage、deb、rpm 都能产出
+- 2026-06-23: `error running appimage.sh` 仍然缺少根因日志，因此 `scripts/package.js` 已在 Linux Tauri bundle 失败时输出 `build_appimage.sh`、目录快照并用 `bash -x` 二次重跑；release workflow 也会在 Linux 失败时上传 `target/release/bundle/appimage*` 调试产物，方便下一轮直接定位 AppImage 卡点

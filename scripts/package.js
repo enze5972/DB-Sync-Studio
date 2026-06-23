@@ -196,8 +196,73 @@ function buildTauriBundle() {
       console.warn('Warning: cargo tauri build exited with code ' + result.status + ', but bundle artifacts were recovered.');
       return;
     }
+    dumpLinuxAppImageDiagnostics(bundleDir);
     throw new Error('Command failed: cargo tauri build');
   }
+}
+
+function dumpLinuxAppImageDiagnostics(bundleDir) {
+  if (PLATFORM !== 'linux') {
+    return;
+  }
+
+  const appimageDir = path.join(bundleDir, 'appimage');
+  const buildScriptPath = path.join(appimageDir, 'build_appimage.sh');
+  console.log('');
+  console.log('=== Linux AppImage diagnostics ===');
+  console.log('bundle directory: ' + bundleDir);
+  console.log('appimage directory: ' + appimageDir);
+
+  if (!fs.existsSync(appimageDir)) {
+    console.warn('Warning: AppImage directory not found, cannot collect extra diagnostics.');
+    return;
+  }
+
+  printDirectorySnapshot(appimageDir);
+
+  if (!fs.existsSync(buildScriptPath)) {
+    console.warn('Warning: build_appimage.sh not found, cannot rerun AppImage bundling with tracing.');
+    return;
+  }
+
+  console.log('--- build_appimage.sh ---');
+  process.stdout.write(fs.readFileSync(buildScriptPath, 'utf8'));
+  if (!fs.readFileSync(buildScriptPath, 'utf8').endsWith('\n')) {
+    process.stdout.write('\n');
+  }
+
+  cleanupAppImageArtifacts(appimageDir);
+  console.log('--- rerun: bash -x build_appimage.sh ---');
+  const rerun = spawnSync('bash', ['-x', 'build_appimage.sh'], {
+    cwd: appimageDir,
+    env: Object.assign({}, process.env, {
+      PATH: buildToolPath()
+    }),
+    stdio: 'inherit'
+  });
+  console.log('--- AppImage diagnostic rerun exit code: ' + rerun.status + ' ---');
+}
+
+function printDirectorySnapshot(dir) {
+  console.log('--- appimage directory snapshot ---');
+  fs.readdirSync(dir).sort().forEach(function (entry) {
+    const entryPath = path.join(dir, entry);
+    const stat = fs.statSync(entryPath);
+    const suffix = stat.isDirectory() ? '/' : '';
+    console.log(entry + suffix);
+  });
+}
+
+function cleanupAppImageArtifacts(appimageDir) {
+  fs.readdirSync(appimageDir).forEach(function (entry) {
+    if (entry === 'build_appimage.sh') {
+      return;
+    }
+    if (!/\.AppDir$/.test(entry) && !/\.AppImage$/.test(entry)) {
+      return;
+    }
+    fs.rmSync(path.join(appimageDir, entry), { recursive: true, force: true });
+  });
 }
 
 function finalizeMacosDmg(bundleDir) {

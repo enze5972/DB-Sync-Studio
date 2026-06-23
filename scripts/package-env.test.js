@@ -49,3 +49,26 @@ test('buildToolPath reads Windows Path entries', function () {
 
   assert.ok(toolPath.includes('C:/ProgramData/chocolatey/bin'));
 });
+
+test('cleanupAppImageArtifacts removes generated AppImage outputs but keeps script and unrelated files', function () {
+  const script = loadPackageScript();
+  const tmpDir = fs.mkdtempSync(path.join(__dirname, 'package-env-'));
+  const appDir = path.join(tmpDir, 'db-sync-studio.AppDir');
+  const appImage = path.join(tmpDir, 'db-sync-studio_0.1.0_amd64.AppImage');
+  const buildScript = path.join(tmpDir, 'build_appimage.sh');
+  const notesFile = path.join(tmpDir, 'notes.txt');
+
+  fs.mkdirSync(appDir);
+  fs.writeFileSync(appImage, 'binary');
+  fs.writeFileSync(buildScript, '#!/usr/bin/env bash\n');
+  fs.writeFileSync(notesFile, 'keep me');
+
+  script.cleanupAppImageArtifacts(tmpDir);
+
+  assert.equal(fs.existsSync(appDir), false);
+  assert.equal(fs.existsSync(appImage), false);
+  assert.equal(fs.existsSync(buildScript), true);
+  assert.equal(fs.existsSync(notesFile), true);
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
