@@ -1,10 +1,10 @@
 package com.dbsyncstudio.core.sync;
 
-import com.dbsyncstudio.model.sync.FullSyncRequest;
-import com.dbsyncstudio.model.sync.FullSyncResult;
+import com.dbsyncstudio.model.sync.dto.FullSyncRequestDTO;
+import com.dbsyncstudio.model.sync.vo.FullSyncResultVO;
 
 public interface FullSyncEngine {
 
-    FullSyncResult sync(FullSyncRequest request);
+    FullSyncResultVO sync(FullSyncRequestDTO request);
 }
 

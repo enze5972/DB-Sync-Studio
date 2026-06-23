@@ -1,7 +1,7 @@
 package com.dbsyncstudio.core.connection;
 
-import com.dbsyncstudio.model.datasource.ConnectionTestResult;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.vo.ConnectionTestResultVO;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -9,7 +9,7 @@ import java.sql.SQLException;
 public class JdbcDatasourceConnectionTester implements DatasourceConnectionTester {
 
     @Override
-    public ConnectionTestResult test(DatasourceConfig config) {
+    public ConnectionTestResultVO test(DatasourceConfigDO config) {
         long startTime = System.currentTimeMillis();
         if (config == null) {
             return buildFailure(startTime, "Invalid datasource config: datasource must not be null");
@@ -18,7 +18,7 @@ public class JdbcDatasourceConnectionTester implements DatasourceConnectionTeste
             try (Connection connection = JdbcConnectionSupport.openConnection(config)) {
                 long costMillis = System.currentTimeMillis() - startTime;
                 String productName = connection.getMetaData().getDatabaseProductName();
-                return ConnectionTestResult.builder()
+                return ConnectionTestResultVO.builder()
                         .success(true)
                         .message("Connection successful: " + productName)
                         .costMillis(costMillis)
@@ -31,9 +31,9 @@ public class JdbcDatasourceConnectionTester implements DatasourceConnectionTeste
         }
     }
 
-    private ConnectionTestResult buildFailure(long startTime, String message) {
+    private ConnectionTestResultVO buildFailure(long startTime, String message) {
         long costMillis = System.currentTimeMillis() - startTime;
-        return ConnectionTestResult.builder()
+        return ConnectionTestResultVO.builder()
                 .success(false)
                 .message(message)
                 .costMillis(costMillis)

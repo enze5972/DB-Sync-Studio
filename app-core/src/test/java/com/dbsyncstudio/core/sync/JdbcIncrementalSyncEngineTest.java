@@ -2,15 +2,15 @@ package com.dbsyncstudio.core.sync;
 
 import com.dbsyncstudio.core.connection.DatasourceConnectionOpener;
 import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.sync.ExecutionLogEntry;
-import com.dbsyncstudio.model.sync.ExecutionLogRepository;
-import com.dbsyncstudio.model.sync.IncrementalSyncCheckpointEntry;
-import com.dbsyncstudio.model.sync.IncrementalSyncCheckpointRepository;
+import com.dbsyncstudio.model.sync.entity.ExecutionLogEntryDO;
+import com.dbsyncstudio.store.repository.ExecutionLogRepository;
+import com.dbsyncstudio.model.sync.entity.IncrementalSyncCheckpointEntryDO;
+import com.dbsyncstudio.store.repository.IncrementalSyncCheckpointRepository;
 import com.dbsyncstudio.model.sync.IncrementalSyncMode;
-import com.dbsyncstudio.model.sync.IncrementalSyncRequest;
-import com.dbsyncstudio.model.sync.IncrementalSyncResult;
+import com.dbsyncstudio.model.sync.dto.IncrementalSyncRequestDTO;
+import com.dbsyncstudio.model.sync.vo.IncrementalSyncResultVO;
 
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.Assert;
@@ -47,7 +47,7 @@ public class JdbcIncrementalSyncEngineTest {
         JdbcIncrementalSyncEngine engine = new JdbcIncrementalSyncEngine(new JdbcDatabaseMetadataScanner(),
                 new MapBackedConnectionOpener(dataSources), executionLogRepository, checkpointRepository);
 
-        IncrementalSyncResult result = engine.sync(buildTimestampRequest("source", "target", 1L, null));
+        IncrementalSyncResultVO result = engine.sync(buildTimestampRequest("source", "target", 1L, null));
 
         Assert.assertTrue(result.isSuccess());
         Assert.assertFalse(result.isResumed());
@@ -78,14 +78,14 @@ public class JdbcIncrementalSyncEngineTest {
         JdbcIncrementalSyncEngine engine = new JdbcIncrementalSyncEngine(new JdbcDatabaseMetadataScanner(),
                 new MapBackedConnectionOpener(dataSources), executionLogRepository, checkpointRepository);
 
-        IncrementalSyncResult firstResult = engine.sync(buildTimestampRequest("source", "target", 2L, null));
+        IncrementalSyncResultVO firstResult = engine.sync(buildTimestampRequest("source", "target", 2L, null));
         Assert.assertEquals(2L, firstResult.getInsertedRowCount());
 
         insertRows(sourceDataSource, "customer", new Object[][]{
                 {3L, "Charlie", 30L}
         });
 
-        IncrementalSyncResult secondResult = engine.sync(buildTimestampRequest("source", "target", 2L, null));
+        IncrementalSyncResultVO secondResult = engine.sync(buildTimestampRequest("source", "target", 2L, null));
         Assert.assertTrue(secondResult.isResumed());
         Assert.assertEquals("30", secondResult.getCheckpointValue());
         Assert.assertEquals(1L, secondResult.getInsertedRowCount());
@@ -116,14 +116,14 @@ public class JdbcIncrementalSyncEngineTest {
         JdbcIncrementalSyncEngine engine = new JdbcIncrementalSyncEngine(new JdbcDatabaseMetadataScanner(),
                 new MapBackedConnectionOpener(dataSources), executionLogRepository, checkpointRepository);
 
-        IncrementalSyncResult firstResult = engine.sync(buildAutoIncrementRequest("source", "target", 3L, null));
+        IncrementalSyncResultVO firstResult = engine.sync(buildAutoIncrementRequest("source", "target", 3L, null));
         Assert.assertEquals(2L, firstResult.getInsertedRowCount());
 
         insertRows(sourceDataSource, "customer", new Object[][]{
                 {3L, "Charlie", 30L}
         });
 
-        IncrementalSyncResult secondResult = engine.sync(buildAutoIncrementRequest("source", "target", 3L, null));
+        IncrementalSyncResultVO secondResult = engine.sync(buildAutoIncrementRequest("source", "target", 3L, null));
         Assert.assertTrue(secondResult.isResumed());
         Assert.assertEquals("3", secondResult.getCheckpointValue());
         Assert.assertEquals(1L, secondResult.getInsertedRowCount());
@@ -134,8 +134,8 @@ public class JdbcIncrementalSyncEngineTest {
         assertTargetValue(targetDataSource, "customer_copy", 3L, "Charlie", 30L);
     }
 
-    private IncrementalSyncRequest buildTimestampRequest(String sourceKey, String targetKey, Long taskId, String checkpointValue) {
-        return IncrementalSyncRequest.builder()
+    private IncrementalSyncRequestDTO buildTimestampRequest(String sourceKey, String targetKey, Long taskId, String checkpointValue) {
+        return IncrementalSyncRequestDTO.builder()
                 .taskId(taskId)
                 .sourceDatasource(buildConfig(sourceKey))
                 .targetDatasource(buildConfig(targetKey))
@@ -151,8 +151,8 @@ public class JdbcIncrementalSyncEngineTest {
                 .build();
     }
 
-    private IncrementalSyncRequest buildAutoIncrementRequest(String sourceKey, String targetKey, Long taskId, String checkpointValue) {
-        return IncrementalSyncRequest.builder()
+    private IncrementalSyncRequestDTO buildAutoIncrementRequest(String sourceKey, String targetKey, Long taskId, String checkpointValue) {
+        return IncrementalSyncRequestDTO.builder()
                 .taskId(taskId)
                 .sourceDatasource(buildConfig(sourceKey))
                 .targetDatasource(buildConfig(targetKey))
@@ -168,8 +168,8 @@ public class JdbcIncrementalSyncEngineTest {
                 .build();
     }
 
-    private DatasourceConfig buildConfig(String key) {
-        DatasourceConfig config = new DatasourceConfig();
+    private DatasourceConfigDO buildConfig(String key) {
+        DatasourceConfigDO config = new DatasourceConfigDO();
         config.setType(DatasourceType.MYSQL);
         config.setRemark(key);
         return config;
@@ -238,7 +238,7 @@ public class JdbcIncrementalSyncEngineTest {
         }
 
         @Override
-        public Connection open(DatasourceConfig config) throws java.sql.SQLException {
+        public Connection open(DatasourceConfigDO config) throws java.sql.SQLException {
             JdbcDataSource dataSource = dataSources.get(config.getRemark());
             if (dataSource == null) {
                 throw new java.sql.SQLException("Unknown test data source: " + config.getRemark());
@@ -249,18 +249,18 @@ public class JdbcIncrementalSyncEngineTest {
 
     private static class InMemoryExecutionLogRepository implements ExecutionLogRepository {
 
-        private final List<ExecutionLogEntry> entries = new ArrayList<ExecutionLogEntry>();
+        private final List<ExecutionLogEntryDO> entries = new ArrayList<ExecutionLogEntryDO>();
 
         @Override
-        public long append(ExecutionLogEntry entry) {
+        public long append(ExecutionLogEntryDO entry) {
             entries.add(entry);
             return entries.size();
         }
 
         @Override
-        public List<ExecutionLogEntry> findByTaskId(long taskId) {
-            List<ExecutionLogEntry> result = new ArrayList<ExecutionLogEntry>();
-            for (ExecutionLogEntry entry : entries) {
+        public List<ExecutionLogEntryDO> findByTaskId(long taskId) {
+            List<ExecutionLogEntryDO> result = new ArrayList<ExecutionLogEntryDO>();
+            for (ExecutionLogEntryDO entry : entries) {
                 if (entry.getTaskId() != null && entry.getTaskId().longValue() == taskId) {
                     result.add(entry);
                 }
@@ -276,17 +276,17 @@ public class JdbcIncrementalSyncEngineTest {
 
     private static class InMemoryIncrementalSyncCheckpointRepository implements IncrementalSyncCheckpointRepository {
 
-        private IncrementalSyncCheckpointEntry checkpoint;
+        private IncrementalSyncCheckpointEntryDO checkpoint;
 
         @Override
-        public long save(IncrementalSyncCheckpointEntry checkpoint) {
+        public long save(IncrementalSyncCheckpointEntryDO checkpoint) {
             this.checkpoint = checkpoint;
             this.checkpoint.setId(Long.valueOf(1L));
             return 1L;
         }
 
         @Override
-        public Optional<IncrementalSyncCheckpointEntry> findByTaskId(long taskId) {
+        public Optional<IncrementalSyncCheckpointEntryDO> findByTaskId(long taskId) {
             if (checkpoint != null && checkpoint.getTaskId() != null && checkpoint.getTaskId().longValue() == taskId) {
                 return Optional.of(checkpoint);
             }

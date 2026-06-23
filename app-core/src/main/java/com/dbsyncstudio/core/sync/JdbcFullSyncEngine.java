@@ -4,14 +4,16 @@ import com.dbsyncstudio.core.connection.DefaultDatasourceConnectionOpener;
 import com.dbsyncstudio.core.connection.DatasourceConnectionOpener;
 import com.dbsyncstudio.core.metadata.DatabaseMetadataScanner;
 import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
-import com.dbsyncstudio.model.metadata.ColumnMetadata;
-import com.dbsyncstudio.model.metadata.SchemaMetadata;
-import com.dbsyncstudio.model.metadata.TableMetadata;
-import com.dbsyncstudio.model.sync.FullSyncRequest;
-import com.dbsyncstudio.model.sync.FullSyncResult;
-import com.dbsyncstudio.model.sync.SyncCheckpoint;
-import com.dbsyncstudio.model.sync.SyncCheckpointRepository;
+import com.dbsyncstudio.core.transform.TransformContext;
+import com.dbsyncstudio.core.transform.TransformPlan;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
+import com.dbsyncstudio.model.metadata.entity.ColumnMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.SchemaMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.TableMetadataDO;
+import com.dbsyncstudio.model.sync.dto.FullSyncRequestDTO;
+import com.dbsyncstudio.model.sync.vo.FullSyncResultVO;
+import com.dbsyncstudio.model.sync.entity.SyncCheckpointDO;
+import com.dbsyncstudio.store.repository.SyncCheckpointRepository;
 
 import lombok.NonNull;
 
@@ -49,11 +51,15 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
     }
 
     @Override
-    public FullSyncResult sync(FullSyncRequest request) {
+    public FullSyncResultVO sync(FullSyncRequestDTO request) {
         return sync(request, null);
     }
 
-    public FullSyncResult sync(FullSyncRequest request, SyncTaskProgressListener progressListener) {
+    public FullSyncResultVO sync(FullSyncRequestDTO request, SyncTaskProgressListener progressListener) {
+        return sync(request, progressListener, null);
+    }
+
+    public FullSyncResultVO sync(FullSyncRequestDTO request, SyncTaskProgressListener progressListener, TransformPlan transformPlan) {
         long startTime = System.currentTimeMillis();
         try {
             validateRequest(request);
@@ -62,8 +68,8 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
                  Connection targetConnection = connectionOpener.open(request.getTargetDatasource())) {
                 targetConnection.setAutoCommit(false);
                 try {
-                    TableMetadata sourceTable = findSourceTable(sourceConnection, request.getSourceTableName(), request.getSourceSchemaName());
-                    TableMetadata targetTable = cloneTargetTable(sourceTable, request.getTargetTableName(), request.getTargetSchemaName());
+                    TableMetadataDO sourceTable = findSourceTable(sourceConnection, request.getSourceTableName(), request.getSourceSchemaName());
+                    TableMetadataDO targetTable = cloneTargetTable(sourceTable, request.getTargetTableName(), request.getTargetSchemaName());
                     boolean createdTargetTable = ensureTargetTableExists(targetConnection, targetTable);
                     long totalRowCount = countRows(sourceConnection, sourceTable);
                     long startOffset = parseCheckpointValue(request.getCheckpointValue());
@@ -79,7 +85,7 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
                     }
 
                     long insertedRows = copyTableData(sourceConnection, targetConnection, sourceTable, targetTable, request,
-                            progressListener, totalRowCount, startTime, startOffset);
+                            progressListener, totalRowCount, startTime, startOffset, transformPlan);
                     targetConnection.commit();
 
                     String checkpointKey = request.getCheckpointKey();
@@ -87,7 +93,7 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
                         progressListener.saveCheckpoint(checkpointKey, null);
                     }
 
-                    return FullSyncResult.builder()
+                    return FullSyncResultVO.builder()
                             .success(true)
                             .message("Full sync completed successfully")
                             .sourceRowCount(insertedRows)
@@ -107,7 +113,7 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         }
     }
 
-    private void validateRequest(FullSyncRequest request) {
+    private void validateRequest(FullSyncRequestDTO request) {
         if (request == null) {
             throw new IllegalArgumentException("Full sync request must not be null");
         }
@@ -131,10 +137,10 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         }
     }
 
-    private TableMetadata findSourceTable(Connection sourceConnection, String sourceTableName, String sourceSchemaName)
+    private TableMetadataDO findSourceTable(Connection sourceConnection, String sourceTableName, String sourceSchemaName)
             throws SQLException {
-        List<SchemaMetadata> schemas = metadataScanner.scan(sourceConnection);
-        for (SchemaMetadata schemaMetadata : schemas) {
+        List<SchemaMetadataDO> schemas = metadataScanner.scan(sourceConnection);
+        for (SchemaMetadataDO schemaMetadata : schemas) {
             if (sourceSchemaName != null && sourceSchemaName.trim().length() > 0
                     && !sourceSchemaName.equalsIgnoreCase(schemaMetadata.getSchemaName())) {
                 continue;
@@ -142,7 +148,7 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
             if (schemaMetadata.getTables() == null) {
                 continue;
             }
-            for (TableMetadata tableMetadata : schemaMetadata.getTables()) {
+            for (TableMetadataDO tableMetadata : schemaMetadata.getTables()) {
                 if (sourceTableName.equalsIgnoreCase(tableMetadata.getTableName())) {
                     return tableMetadata;
                 }
@@ -151,17 +157,17 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         throw new SQLException("Source table not found: " + sourceTableName);
     }
 
-    private TableMetadata cloneTargetTable(TableMetadata sourceTable, String targetTableName, String targetSchemaName) {
-        TableMetadata targetTable = new TableMetadata();
+    private TableMetadataDO cloneTargetTable(TableMetadataDO sourceTable, String targetTableName, String targetSchemaName) {
+        TableMetadataDO targetTable = new TableMetadataDO();
         targetTable.setSchemaName(targetSchemaName != null && targetSchemaName.trim().length() > 0
                 ? targetSchemaName.trim()
                 : sourceTable.getSchemaName());
         targetTable.setTableName(targetTableName);
-        targetTable.setColumns(new ArrayList<ColumnMetadata>(sourceTable.getColumns()));
+        targetTable.setColumns(new ArrayList<ColumnMetadataDO>(sourceTable.getColumns()));
         return targetTable;
     }
 
-    private boolean ensureTargetTableExists(Connection targetConnection, TableMetadata targetTable) throws SQLException {
+    private boolean ensureTargetTableExists(Connection targetConnection, TableMetadataDO targetTable) throws SQLException {
         if (tableExists(targetConnection, targetTable.getSchemaName(), targetTable.getTableName())) {
             return false;
         }
@@ -191,17 +197,17 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         }
     }
 
-    private void clearTargetTable(Connection targetConnection, TableMetadata targetTable) throws SQLException {
+    private void clearTargetTable(Connection targetConnection, TableMetadataDO targetTable) throws SQLException {
         String sql = "DELETE FROM " + qualifiedTableName(targetTable.getSchemaName(), targetTable.getTableName());
         try (Statement statement = targetConnection.createStatement()) {
             statement.executeUpdate(sql);
         }
     }
 
-    private long copyTableData(Connection sourceConnection, Connection targetConnection, TableMetadata sourceTable,
-                               TableMetadata targetTable, FullSyncRequest request, SyncTaskProgressListener progressListener,
-                               long totalRowCount, long startTime, long startOffset) throws SQLException {
-        List<ColumnMetadata> columns = sourceTable.getColumns();
+    private long copyTableData(Connection sourceConnection, Connection targetConnection, TableMetadataDO sourceTable,
+                               TableMetadataDO targetTable, FullSyncRequestDTO request, SyncTaskProgressListener progressListener,
+                               long totalRowCount, long startTime, long startOffset, TransformPlan transformPlan) throws SQLException {
+        List<ColumnMetadataDO> columns = sourceTable.getColumns();
         String selectSql = buildSelectSql(sourceTable, request.getPageSize());
         String insertSql = buildInsertSql(targetTable);
         long offset = startOffset;
@@ -228,7 +234,8 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
             try (PreparedStatement statement = targetConnection.prepareStatement(insertSql)) {
                 int batchCounter = 0;
                 for (Object[] row : rows) {
-                    bindRow(statement, row);
+                    Object[] transformedRow = transformPlan == null ? row : transformRow(row, columns, request, transformPlan);
+                    bindRow(statement, transformedRow);
                     statement.addBatch();
                     insertedRows++;
                     batchCounter++;
@@ -256,6 +263,29 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         return insertedRows;
     }
 
+    private Object[] transformRow(Object[] row, List<ColumnMetadataDO> columns, FullSyncRequestDTO request, TransformPlan transformPlan) {
+        if (row == null || columns == null || transformPlan == null) {
+            return row;
+        }
+        java.util.Map<String, Object> sourceRow = new java.util.LinkedHashMap<String, Object>();
+        for (int i = 0; i < columns.size() && i < row.length; i++) {
+            sourceRow.put(columns.get(i).getName(), row[i]);
+        }
+        TransformContext context = TransformContext.builder()
+                .taskId(request.getTaskId())
+                .runId(request.getRunId())
+                .tableTaskId(request.getTableTaskId())
+                .sourceRow(sourceRow)
+                .build();
+        java.util.Map<String, Object> transformedRow = transformPlan.transformRow(sourceRow, context);
+        Object[] result = new Object[row.length];
+        for (int i = 0; i < columns.size() && i < result.length; i++) {
+            String columnName = columns.get(i).getName();
+            result[i] = transformedRow.containsKey(columnName) ? transformedRow.get(columnName) : sourceRow.get(columnName);
+        }
+        return result;
+    }
+
     private void saveCheckpoint(SyncTaskProgressListener progressListener, String checkpointKey, long offset) {
         if (progressListener == null || checkpointKey == null || checkpointKey.trim().length() == 0) {
             return;
@@ -263,7 +293,7 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         progressListener.saveCheckpoint(checkpointKey, String.valueOf(offset));
     }
 
-    private long countRows(Connection sourceConnection, TableMetadata sourceTable) throws SQLException {
+    private long countRows(Connection sourceConnection, TableMetadataDO sourceTable) throws SQLException {
         String sql = "SELECT COUNT(1) FROM " + qualifiedTableName(sourceTable.getSchemaName(), sourceTable.getTableName());
         try (Statement statement = sourceConnection.createStatement();
              ResultSet resultSet = statement.executeQuery(sql)) {
@@ -285,7 +315,7 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         }
     }
 
-    private List<Object[]> loadRows(Connection sourceConnection, String selectSql, List<ColumnMetadata> columns, int pageSize, long offset)
+    private List<Object[]> loadRows(Connection sourceConnection, String selectSql, List<ColumnMetadataDO> columns, int pageSize, long offset)
             throws SQLException {
         List<Object[]> rows = new ArrayList<Object[]>();
         try (PreparedStatement statement = sourceConnection.prepareStatement(selectSql)) {
@@ -310,10 +340,10 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         }
     }
 
-    private String buildSelectSql(TableMetadata sourceTable, int pageSize) {
+    private String buildSelectSql(TableMetadataDO sourceTable, int pageSize) {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT ");
-        List<ColumnMetadata> columns = sourceTable.getColumns();
+        List<ColumnMetadataDO> columns = sourceTable.getColumns();
         for (int i = 0; i < columns.size(); i++) {
             if (i > 0) {
                 sql.append(", ");
@@ -326,10 +356,10 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         return sql.toString();
     }
 
-    private String buildInsertSql(TableMetadata targetTable) {
+    private String buildInsertSql(TableMetadataDO targetTable) {
         StringBuilder sql = new StringBuilder();
         sql.append("INSERT INTO ").append(qualifiedTableName(targetTable.getSchemaName(), targetTable.getTableName())).append(" (");
-        List<ColumnMetadata> columns = targetTable.getColumns();
+        List<ColumnMetadataDO> columns = targetTable.getColumns();
         for (int i = 0; i < columns.size(); i++) {
             if (i > 0) {
                 sql.append(", ");
@@ -347,10 +377,10 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         return sql.toString();
     }
 
-    private String buildCreateTableSql(Connection connection, TableMetadata tableMetadata) throws SQLException {
+    private String buildCreateTableSql(Connection connection, TableMetadataDO tableMetadata) throws SQLException {
         StringBuilder sql = new StringBuilder();
         sql.append("CREATE TABLE ").append(qualifiedTableName(tableMetadata.getSchemaName(), tableMetadata.getTableName())).append(" (");
-        List<ColumnMetadata> columns = tableMetadata.getColumns();
+        List<ColumnMetadataDO> columns = tableMetadata.getColumns();
         for (int i = 0; i < columns.size(); i++) {
             if (i > 0) {
                 sql.append(", ");
@@ -363,8 +393,8 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
             }
         }
 
-        List<ColumnMetadata> primaryKeyColumns = new ArrayList<ColumnMetadata>();
-        for (ColumnMetadata columnMetadata : columns) {
+        List<ColumnMetadataDO> primaryKeyColumns = new ArrayList<ColumnMetadataDO>();
+        for (ColumnMetadataDO columnMetadata : columns) {
             if (columnMetadata.isPrimaryKey()) {
                 primaryKeyColumns.add(columnMetadata);
             }
@@ -383,7 +413,7 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
         return sql.toString();
     }
 
-    private String resolveColumnDefinition(ColumnMetadata columnMetadata) {
+    private String resolveColumnDefinition(ColumnMetadataDO columnMetadata) {
         String dataType = columnMetadata.getDataType();
         if (dataType == null || dataType.trim().length() == 0) {
             return "VARCHAR(255)";
@@ -430,8 +460,8 @@ public class JdbcFullSyncEngine implements FullSyncEngine {
                 || "NUMBER".equals(dataType);
     }
 
-    private String buildOrderByClause(List<ColumnMetadata> columns) {
-        for (ColumnMetadata columnMetadata : columns) {
+    private String buildOrderByClause(List<ColumnMetadataDO> columns) {
+        for (ColumnMetadataDO columnMetadata : columns) {
             if (columnMetadata.isPrimaryKey()) {
                 return quoteIdentifier(columnMetadata.getName());
             }

@@ -2,12 +2,12 @@ package com.dbsyncstudio.core.validation;
 
 import com.dbsyncstudio.core.connection.DatasourceConnectionOpener;
 import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.validation.ValidationDifference;
+import com.dbsyncstudio.model.validation.entity.ValidationDifferenceDO;
 import com.dbsyncstudio.model.validation.ValidationMode;
-import com.dbsyncstudio.model.validation.ValidationRequest;
-import com.dbsyncstudio.model.validation.ValidationResult;
+import com.dbsyncstudio.model.validation.dto.ValidationRequestDTO;
+import com.dbsyncstudio.model.validation.vo.ValidationResultVO;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -35,15 +35,15 @@ public class DataValidationEngineTest {
         }
 
         DataValidationEngine engine = new DataValidationEngine(new JdbcDatabaseMetadataScanner(), h2Opener(connections));
-        ValidationRequest request = baseRequest("users", "users", ValidationMode.PRIMARY_KEY_EXISTS);
-        ValidationResult result = engine.validate(request);
+        ValidationRequestDTO request = baseRequest("users", "users", ValidationMode.PRIMARY_KEY_EXISTS);
+        ValidationResultVO result = engine.validate(request);
 
         Assert.assertEquals("SUCCESS", result.getRun().getStatus());
         Assert.assertEquals(Long.valueOf(2L), result.getRun().getSourceRowCount());
         Assert.assertEquals(Long.valueOf(1L), result.getRun().getTargetRowCount());
         Assert.assertEquals(Long.valueOf(1L), result.getRun().getMissingCount());
         Assert.assertEquals(1, result.getDifferences().size());
-        ValidationDifference difference = result.getDifferences().get(0);
+        ValidationDifferenceDO difference = result.getDifferences().get(0);
         Assert.assertEquals("MISSING_TARGET", difference.getDifferenceType());
         String primaryKeyJson = difference.getPrimaryKeyJson().toLowerCase();
         Assert.assertTrue(primaryKeyJson.contains("\"tenant_id\":1"));
@@ -64,8 +64,8 @@ public class DataValidationEngineTest {
         }
 
         DataValidationEngine engine = new DataValidationEngine(new JdbcDatabaseMetadataScanner(), h2Opener(connections));
-        ValidationRequest request = baseRequest("users", "users", ValidationMode.ROW_COUNT);
-        ValidationResult result = engine.validate(request);
+        ValidationRequestDTO request = baseRequest("users", "users", ValidationMode.ROW_COUNT);
+        ValidationResultVO result = engine.validate(request);
 
         Assert.assertEquals(Long.valueOf(2L), result.getRun().getSourceRowCount());
         Assert.assertEquals(Long.valueOf(1L), result.getRun().getTargetRowCount());
@@ -88,24 +88,24 @@ public class DataValidationEngineTest {
         }
 
         DataValidationEngine engine = new DataValidationEngine(new JdbcDatabaseMetadataScanner(), h2Opener(connections));
-        ValidationRequest request = baseRequest("users", "users", ValidationMode.HASH);
+        ValidationRequestDTO request = baseRequest("users", "users", ValidationMode.HASH);
         request.setHashColumns(java.util.Arrays.asList("amount", "updated_at", "name"));
-        ValidationResult result = engine.validate(request);
+        ValidationResultVO result = engine.validate(request);
 
         Assert.assertEquals(Long.valueOf(0L), result.getRun().getInconsistentCount());
         Assert.assertEquals(0, result.getDifferences().size());
     }
 
-    private ValidationRequest baseRequest(String sourceTableName, String targetTableName, ValidationMode mode) {
-        DatasourceConfig source = DatasourceConfig.builder()
+    private ValidationRequestDTO baseRequest(String sourceTableName, String targetTableName, ValidationMode mode) {
+        DatasourceConfigDO source = DatasourceConfigDO.builder()
                 .type(DatasourceType.MYSQL)
                 .databaseName("source")
                 .build();
-        DatasourceConfig target = DatasourceConfig.builder()
+        DatasourceConfigDO target = DatasourceConfigDO.builder()
                 .type(DatasourceType.MYSQL)
                 .databaseName("target")
                 .build();
-        return ValidationRequest.builder()
+        return ValidationRequestDTO.builder()
                 .taskId(Long.valueOf(101L))
                 .sourceDatasource(source)
                 .targetDatasource(target)
@@ -131,7 +131,7 @@ public class DataValidationEngineTest {
     private DatasourceConnectionOpener h2Opener(final Map<String, String> connections) {
         return new DatasourceConnectionOpener() {
             @Override
-            public Connection open(DatasourceConfig config) throws java.sql.SQLException {
+            public Connection open(DatasourceConfigDO config) throws java.sql.SQLException {
                 try {
                     return DataValidationEngineTest.this.openConnection(connections.get(config.getDatabaseName()));
                 } catch (Exception ex) {

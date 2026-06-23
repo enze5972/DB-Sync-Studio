@@ -7,28 +7,28 @@ import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
 import com.dbsyncstudio.core.schema.SchemaComparisonEngine;
 import com.dbsyncstudio.core.sync.JdbcFullSyncEngine;
 import com.dbsyncstudio.core.sync.JdbcIncrementalSyncEngine;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.sync.ExecutionLogEntry;
-import com.dbsyncstudio.model.sync.LogCleanupSummary;
+import com.dbsyncstudio.model.sync.entity.ExecutionLogEntryDO;
+import com.dbsyncstudio.model.sync.vo.LogCleanupSummaryVO;
 import com.dbsyncstudio.model.sync.SyncMode;
-import com.dbsyncstudio.model.sync.SyncRun;
-import com.dbsyncstudio.model.sync.SyncRunLogEntry;
-import com.dbsyncstudio.model.sync.SyncTableRun;
-import com.dbsyncstudio.model.sync.SyncTask;
+import com.dbsyncstudio.model.sync.entity.SyncRunDO;
+import com.dbsyncstudio.model.sync.entity.SyncRunLogEntryDO;
+import com.dbsyncstudio.model.sync.entity.SyncTableRunDO;
+import com.dbsyncstudio.model.sync.entity.SyncTaskDO;
 import com.dbsyncstudio.model.sync.SyncTaskStatus;
-import com.dbsyncstudio.store.sqlite.SqliteConnectionFactory;
-import com.dbsyncstudio.store.sqlite.SqliteDatasourceRepository;
-import com.dbsyncstudio.store.sqlite.SqliteFieldMappingRepository;
-import com.dbsyncstudio.store.sqlite.SqliteIncrementalSyncCheckpointRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSchemaComparisonHistoryRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSqlExecutionLogRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncRunLogRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncRunRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncTableRunRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncTaskRepository;
-import com.dbsyncstudio.store.sync.SqliteExecutionLogRepository;
-import com.dbsyncstudio.store.sync.SqliteSyncCheckpointRepository;
+import com.dbsyncstudio.store.sqlite.DatabaseConnectionFactory;
+import com.dbsyncstudio.store.repository.sqlite.DatasourceRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.FieldMappingRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.IncrementalSyncCheckpointRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SchemaComparisonHistoryRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SqlExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncRunLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncRunRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncTableRunRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncTaskRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.ExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncCheckpointRepositoryImpl;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -44,7 +44,7 @@ public class DesktopBackendServiceP2_2HistoryGuardTest {
         Fixtures fixtures = Fixtures.create("history-guard-filter");
         DesktopBackendService service = fixtures.createService();
 
-        List<SyncRunLogEntry> logs = service.listSyncRunLogs(Long.valueOf(fixtures.taskId), "run-001",
+        List<SyncRunLogEntryDO> logs = service.listSyncRunLogs(Long.valueOf(fixtures.taskId), "run-001",
                 Long.valueOf(fixtures.syncRunId), Long.valueOf(fixtures.syncTableRunId),
                 "customer", "INFO", "table completed", null, null, 20);
 
@@ -58,41 +58,41 @@ public class DesktopBackendServiceP2_2HistoryGuardTest {
         DesktopBackendService service = fixtures.createService();
         service.startTask(fixtures.taskId);
 
-        LogCleanupSummary summary = service.cleanupLogs(Integer.valueOf(1));
+        LogCleanupSummaryVO summary = service.cleanupLogs(Integer.valueOf(1));
 
         Assert.assertNotNull(summary);
         Assert.assertTrue(summary.getExecutionLogDeletedCount().intValue() >= 0);
-        List<ExecutionLogEntry> logs = service.listLogs(Long.valueOf(fixtures.taskId));
+        List<ExecutionLogEntryDO> logs = service.listLogs(Long.valueOf(fixtures.taskId));
         Assert.assertFalse(logs.isEmpty());
     }
 
     private static final class Fixtures {
-        private final SqliteDatasourceRepository datasourceRepository;
-        private final SqliteSyncTaskRepository taskRepository;
-        private final SqliteExecutionLogRepository executionLogRepository;
-        private final SqliteSyncCheckpointRepository syncCheckpointRepository;
-        private final SqliteFieldMappingRepository fieldMappingRepository;
-        private final SqliteSqlExecutionLogRepository sqlExecutionLogRepository;
-        private final SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository;
-        private final SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository;
-        private final SqliteSyncRunRepository syncRunRepository;
-        private final SqliteSyncTableRunRepository syncTableRunRepository;
-        private final SqliteSyncRunLogRepository syncRunLogRepository;
+        private final DatasourceRepositoryImpl datasourceRepository;
+        private final SyncTaskRepositoryImpl taskRepository;
+        private final ExecutionLogRepositoryImpl executionLogRepository;
+        private final SyncCheckpointRepositoryImpl syncCheckpointRepository;
+        private final FieldMappingRepositoryImpl fieldMappingRepository;
+        private final SqlExecutionLogRepositoryImpl sqlExecutionLogRepository;
+        private final SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository;
+        private final IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository;
+        private final SyncRunRepositoryImpl syncRunRepository;
+        private final SyncTableRunRepositoryImpl syncTableRunRepository;
+        private final SyncRunLogRepositoryImpl syncRunLogRepository;
         private final long taskId;
         private final long syncRunId;
         private final long syncTableRunId;
 
-        private Fixtures(SqliteDatasourceRepository datasourceRepository,
-                         SqliteSyncTaskRepository taskRepository,
-                         SqliteExecutionLogRepository executionLogRepository,
-                         SqliteSyncCheckpointRepository syncCheckpointRepository,
-                         SqliteFieldMappingRepository fieldMappingRepository,
-                         SqliteSqlExecutionLogRepository sqlExecutionLogRepository,
-                         SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository,
-                         SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository,
-                         SqliteSyncRunRepository syncRunRepository,
-                         SqliteSyncTableRunRepository syncTableRunRepository,
-                         SqliteSyncRunLogRepository syncRunLogRepository,
+        private Fixtures(DatasourceRepositoryImpl datasourceRepository,
+                         SyncTaskRepositoryImpl taskRepository,
+                         ExecutionLogRepositoryImpl executionLogRepository,
+                         SyncCheckpointRepositoryImpl syncCheckpointRepository,
+                         FieldMappingRepositoryImpl fieldMappingRepository,
+                         SqlExecutionLogRepositoryImpl sqlExecutionLogRepository,
+                         SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository,
+                         IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository,
+                         SyncRunRepositoryImpl syncRunRepository,
+                         SyncTableRunRepositoryImpl syncTableRunRepository,
+                         SyncRunLogRepositoryImpl syncRunLogRepository,
                          long taskId,
                          long syncRunId,
                          long syncTableRunId) {
@@ -119,18 +119,18 @@ public class DesktopBackendServiceP2_2HistoryGuardTest {
             }
             tempDatabase.deleteOnExit();
 
-            SqliteConnectionFactory connectionFactory = new SqliteConnectionFactory(tempDatabase);
-            SqliteDatasourceRepository datasourceRepository = new SqliteDatasourceRepository(connectionFactory);
-            SqliteSyncTaskRepository taskRepository = new SqliteSyncTaskRepository(connectionFactory);
-            SqliteExecutionLogRepository executionLogRepository = new SqliteExecutionLogRepository(connectionFactory);
-            SqliteSyncCheckpointRepository syncCheckpointRepository = new SqliteSyncCheckpointRepository(connectionFactory);
-            SqliteFieldMappingRepository fieldMappingRepository = new SqliteFieldMappingRepository(connectionFactory);
-            SqliteSqlExecutionLogRepository sqlExecutionLogRepository = new SqliteSqlExecutionLogRepository(connectionFactory);
-            SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository = new SqliteSchemaComparisonHistoryRepository(connectionFactory);
-            SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository = new SqliteIncrementalSyncCheckpointRepository(connectionFactory);
-            SqliteSyncRunRepository syncRunRepository = new SqliteSyncRunRepository(connectionFactory);
-            SqliteSyncTableRunRepository syncTableRunRepository = new SqliteSyncTableRunRepository(connectionFactory);
-            SqliteSyncRunLogRepository syncRunLogRepository = new SqliteSyncRunLogRepository(connectionFactory);
+            DatabaseConnectionFactory connectionFactory = new DatabaseConnectionFactory(tempDatabase);
+            DatasourceRepositoryImpl datasourceRepository = new DatasourceRepositoryImpl(connectionFactory);
+            SyncTaskRepositoryImpl taskRepository = new SyncTaskRepositoryImpl(connectionFactory);
+            ExecutionLogRepositoryImpl executionLogRepository = new ExecutionLogRepositoryImpl(connectionFactory);
+            SyncCheckpointRepositoryImpl syncCheckpointRepository = new SyncCheckpointRepositoryImpl(connectionFactory);
+            FieldMappingRepositoryImpl fieldMappingRepository = new FieldMappingRepositoryImpl(connectionFactory);
+            SqlExecutionLogRepositoryImpl sqlExecutionLogRepository = new SqlExecutionLogRepositoryImpl(connectionFactory);
+            SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository = new SchemaComparisonHistoryRepositoryImpl(connectionFactory);
+            IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository = new IncrementalSyncCheckpointRepositoryImpl(connectionFactory);
+            SyncRunRepositoryImpl syncRunRepository = new SyncRunRepositoryImpl(connectionFactory);
+            SyncTableRunRepositoryImpl syncTableRunRepository = new SyncTableRunRepositoryImpl(connectionFactory);
+            SyncRunLogRepositoryImpl syncRunLogRepository = new SyncRunLogRepositoryImpl(connectionFactory);
 
             datasourceRepository.initialize();
             taskRepository.initialize();
@@ -146,7 +146,7 @@ public class DesktopBackendServiceP2_2HistoryGuardTest {
 
             long sourceDatasourceId = datasourceRepository.save(createDatasource("source-db"));
             long targetDatasourceId = datasourceRepository.save(createDatasource("target-db"));
-            SyncTask task = SyncTask.builder()
+            SyncTaskDO task = SyncTaskDO.builder()
                     .taskName(prefix + "-task")
                     .sourceDatasourceId(Long.valueOf(sourceDatasourceId))
                     .targetDatasourceId(Long.valueOf(targetDatasourceId))
@@ -158,7 +158,7 @@ public class DesktopBackendServiceP2_2HistoryGuardTest {
             long taskId = taskRepository.save(task);
 
             long now = System.currentTimeMillis();
-            SyncRun run = SyncRun.builder()
+            SyncRunDO run = SyncRunDO.builder()
                     .taskId(Long.valueOf(taskId))
                     .runId("run-001")
                     .syncMode("FULL")
@@ -177,7 +177,7 @@ public class DesktopBackendServiceP2_2HistoryGuardTest {
                     .build();
             long syncRunId = syncRunRepository.save(run);
 
-            SyncTableRun tableRun = SyncTableRun.builder()
+            SyncTableRunDO tableRun = SyncTableRunDO.builder()
                     .syncRunId(Long.valueOf(syncRunId))
                     .taskId(Long.valueOf(taskId))
                     .runId("run-001")
@@ -193,7 +193,7 @@ public class DesktopBackendServiceP2_2HistoryGuardTest {
                     .build();
             long syncTableRunId = syncTableRunRepository.save(tableRun);
 
-            SyncRunLogEntry entry = SyncRunLogEntry.builder()
+            SyncRunLogEntryDO entry = SyncRunLogEntryDO.builder()
                     .taskId(Long.valueOf(taskId))
                     .syncRunId(Long.valueOf(syncRunId))
                     .syncTableRunId(Long.valueOf(syncTableRunId))
@@ -237,8 +237,8 @@ public class DesktopBackendServiceP2_2HistoryGuardTest {
                     new JdbcIncrementalSyncEngine(executionLogRepository, incrementalCheckpointRepository));
         }
 
-        private static DatasourceConfig createDatasource(String name) {
-            DatasourceConfig datasourceConfig = new DatasourceConfig();
+        private static DatasourceConfigDO createDatasource(String name) {
+            DatasourceConfigDO datasourceConfig = new DatasourceConfigDO();
             datasourceConfig.setName(name);
             datasourceConfig.setType(DatasourceType.MYSQL);
             datasourceConfig.setHost("127.0.0.1");

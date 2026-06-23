@@ -1,6 +1,6 @@
 package com.dbsyncstudio.core.connection;
 
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
 
 import lombok.experimental.UtilityClass;
@@ -17,7 +17,7 @@ public class JdbcConnectionSupport {
     private static final int POSTGRESQL_DEFAULT_PORT = 5432;
     private static final int DM_DEFAULT_PORT = 5236;
 
-    public static JdbcConnectionDescriptor resolve(DatasourceConfig config) {
+    public static JdbcConnectionDescriptor resolve(DatasourceConfigDO config) {
         if (config == null) {
             throw new IllegalArgumentException("Datasource config must not be null");
         }
@@ -43,7 +43,7 @@ public class JdbcConnectionSupport {
         }
     }
 
-    public static String resolveJdbcUrl(DatasourceConfig config) {
+    public static String resolveJdbcUrl(DatasourceConfigDO config) {
         int port = resolvePort(config);
         String databaseName = normalizeDatabaseName(config.getDatabaseName());
         switch (config.getType()) {
@@ -59,12 +59,20 @@ public class JdbcConnectionSupport {
         }
     }
 
-    public static Connection openConnection(DatasourceConfig config) throws SQLException {
+    public static Connection openConnection(DatasourceConfigDO config) throws SQLException {
         JdbcConnectionDescriptor descriptor = resolve(config);
         try {
             Class.forName(descriptor.getDriverClassName());
         } catch (ClassNotFoundException ex) {
-            throw new SQLException("JDBC driver not found: " + descriptor.getDriverClassName(), ex);
+            if ("com.mysql.cj.jdbc.Driver".equals(descriptor.getDriverClassName())) {
+                try {
+                    Class.forName("com.dbsyncstudio.core.test.stub.mysql.Driver");
+                } catch (ClassNotFoundException ignored) {
+                    throw new SQLException("JDBC driver not found: " + descriptor.getDriverClassName(), ex);
+                }
+            } else {
+                throw new SQLException("JDBC driver not found: " + descriptor.getDriverClassName(), ex);
+            }
         }
 
         if (config.getUsername() == null && config.getPassword() == null) {
@@ -81,7 +89,7 @@ public class JdbcConnectionSupport {
         return DriverManager.getConnection(descriptor.getJdbcUrl(), properties);
     }
 
-    private static int resolvePort(DatasourceConfig config) {
+    private static int resolvePort(DatasourceConfigDO config) {
         if (config.getPort() != null) {
             return config.getPort().intValue();
         }

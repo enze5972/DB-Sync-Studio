@@ -12,6 +12,7 @@ const UI_DIR = path.join(RELEASE_DIR, 'ui');
 const TAURI_BUNDLE_DIR = path.join(RELEASE_DIR, 'tauri-bundle');
 const TAURI_RESOURCE_BACKEND_DIR = path.join(ROOT, 'app-shell', 'src-tauri', 'resources', 'backend');
 const JAVA_VERSION_REQUIRED = 17;
+const JAVA_HOME_REQUIRED = resolveJavaHome(JAVA_VERSION_REQUIRED);
 
 main();
 
@@ -45,10 +46,16 @@ function verifyJavaToolchain() {
   if (!majorVersion) {
     console.warn('Warning: Unable to detect Java version. Packaging will continue, but runtime image checks are less reliable.');
   }
+  if (JAVA_HOME_REQUIRED) {
+    console.log('Using Java ' + JAVA_VERSION_REQUIRED + ' from ' + JAVA_HOME_REQUIRED);
+    return;
+  }
+  throw new Error('Java ' + JAVA_VERSION_REQUIRED + ' not found. Please install JDK ' + JAVA_VERSION_REQUIRED + ' or set JAVA_HOME to a compatible JDK.');
 }
 
 function buildBackend() {
-  run('mvn -q -f pom.xml -pl app-core -am test package dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory="' + escapePath(BACKEND_LIB_DIR) + '"', ROOT);
+  const testFlag = shouldRunPackageTests() ? 'test ' : '-DskipTests ';
+  run('mvn -q -f pom.xml -pl app-core -am ' + testFlag + 'package dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory="' + escapePath(BACKEND_LIB_DIR) + '"', ROOT, buildJavaEnv());
 }
 
 function buildFrontend() {
@@ -85,8 +92,13 @@ function createLaunchers() {
     '#!/usr/bin/env bash',
     'set -euo pipefail',
     'DIR="$(cd "$(dirname "$0")" && pwd)"',
-    'JAVA_BIN="${JAVA_HOME:-}/bin/java"',
-    'if [ ! -x "$JAVA_BIN" ]; then JAVA_BIN="java"; fi',
+    'if [ -x "$DIR/runtime/bin/java" ]; then',
+    '  JAVA_BIN="$DIR/runtime/bin/java"',
+    'elif [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then',
+    '  JAVA_BIN="$JAVA_HOME/bin/java"',
+    'else',
+    '  JAVA_BIN="java"',
+    'fi',
     'exec "$JAVA_BIN" -cp "$DIR/app-core.jar:$DIR/lib/*" com.dbsyncstudio.core.DbSyncStudioApplication "$@"'
   ].join('\n');
   writeFile(path.join(BACKEND_DIR, 'run-backend.sh'), shLauncher);
@@ -96,8 +108,10 @@ function createLaunchers() {
     '@echo off',
     'setlocal',
     'set DIR=%~dp0',
-    'if defined JAVA_HOME (',
-    '  set JAVA_BIN=%JAVA_HOME%\\bin\\java.exe',
+    'if exist "%DIR%runtime\\bin\\java.exe" (',
+    '  set JAVA_BIN=%DIR%runtime\\bin\\java.exe',
+    ') else if defined JAVA_HOME (',
+    '  if exist "%JAVA_HOME%\\bin\\java.exe" set JAVA_BIN=%JAVA_HOME%\\bin\\java.exe',
     ') else (',
     '  set JAVA_BIN=java',
     ')',
@@ -107,7 +121,7 @@ function createLaunchers() {
 }
 
 function buildRuntimeImage() {
-  const jlink = resolveJlink();
+  const jlink = resolveJlink(JAVA_HOME_REQUIRED);
   if (!jlink) {
     console.warn('Warning: jlink not found. Runtime image was not generated.');
     return;
@@ -116,8 +130,8 @@ function buildRuntimeImage() {
   const runtimeDir = path.join(RELEASE_DIR, 'runtime');
   fs.rmSync(runtimeDir, { recursive: true, force: true });
 
-  const modules = 'java.base,java.logging,java.sql,java.naming,jdk.httpserver';
-  run('"' + escapePath(jlink) + '" --add-modules ' + modules + ' --strip-debug --no-header-files --no-man-pages --compress=2 --output "' + escapePath(runtimeDir) + '"', ROOT);
+  const modules = 'java.base,java.logging,java.sql,java.naming,jdk.httpserver,jdk.unsupported';
+  run('"' + escapePath(jlink) + '" --add-modules ' + modules + ' --strip-debug --no-header-files --no-man-pages --compress=2 --output "' + escapePath(runtimeDir) + '"', ROOT, buildJavaEnv());
 }
 
 function ensureTauriIcons() {
@@ -444,20 +458,12 @@ function resolveCargo() {
   return output.length > 0 ? output[0] : null;
 }
 
-function resolveJlink() {
-  if (process.env.JAVA_HOME) {
-    const candidate = path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'jlink.exe' : 'jlink');
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  const result = runCapture(process.platform === 'win32' ? 'where jlink' : 'command -v jlink', { allowFailure: true });
-  if (result.status !== 0) {
+function resolveJlink(javaHome) {
+  if (!javaHome) {
     return null;
   }
-  const output = (result.stdout || '').trim().split(/\r?\n/).filter(Boolean);
-  return output.length > 0 ? output[0] : null;
+  const candidate = path.join(javaHome, 'bin', process.platform === 'win32' ? 'jlink.exe' : 'jlink');
+  return fs.existsSync(candidate) ? candidate : null;
 }
 
 function parseJavaMajorVersion(output) {
@@ -469,6 +475,116 @@ function parseJavaMajorVersion(output) {
     return parseInt(match[2], 10);
   }
   return parseInt(match[1], 10);
+}
+
+function resolveJavaHome(requiredMajor) {
+  const candidates = [];
+  if (process.env.JAVA_HOME) {
+    candidates.push(process.env.JAVA_HOME);
+  }
+  const commandHome = resolveJavaHomeFromCommand(requiredMajor);
+  if (commandHome) {
+    candidates.push(commandHome);
+  }
+  candidates.push.apply(candidates, resolveJavaHomeDirectories());
+
+  const seen = new Set();
+  for (let i = 0; i < candidates.length; i += 1) {
+    const javaHome = candidates[i];
+    if (!javaHome || seen.has(javaHome)) {
+      continue;
+    }
+    seen.add(javaHome);
+    if (isJavaHomeCompatible(javaHome, requiredMajor)) {
+      return javaHome;
+    }
+  }
+  return null;
+}
+
+function resolveJavaHomeFromCommand(requiredMajor) {
+  if (process.platform !== 'darwin') {
+    return null;
+  }
+  const result = runCapture('/usr/libexec/java_home -v ' + requiredMajor, { allowFailure: true });
+  if (result.status !== 0) {
+    return null;
+  }
+  const output = (result.stdout || '').trim();
+  return output.length > 0 ? output : null;
+}
+
+function resolveJavaHomeDirectories() {
+  const roots = [];
+  if (process.platform === 'darwin') {
+    roots.push('/Library/Java/JavaVirtualMachines');
+  } else if (process.platform === 'win32') {
+    roots.push('C:\\Program Files\\Java');
+    roots.push('C:\\Program Files\\Eclipse Adoptium');
+    roots.push('C:\\Program Files\\Microsoft\\jdk');
+  } else {
+    roots.push('/usr/lib/jvm');
+    roots.push('/usr/java');
+    roots.push('/opt/java');
+  }
+
+  const homes = [];
+  for (let i = 0; i < roots.length; i += 1) {
+    const root = roots[i];
+    if (!fs.existsSync(root)) {
+      continue;
+    }
+    const entries = fs.readdirSync(root);
+    for (let j = 0; j < entries.length; j += 1) {
+      const entry = entries[j];
+      const candidate = path.join(root, entry);
+      if (fs.existsSync(path.join(candidate, 'bin', process.platform === 'win32' ? 'java.exe' : 'java'))) {
+        homes.push(candidate);
+      }
+      if (process.platform === 'darwin') {
+        const macHome = path.join(candidate, 'Contents', 'Home');
+        if (fs.existsSync(path.join(macHome, 'bin', 'java'))) {
+          homes.push(macHome);
+        }
+      }
+    }
+  }
+  return homes;
+}
+
+function isJavaHomeCompatible(javaHome, requiredMajor) {
+  const javaBin = path.join(javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
+  if (!fs.existsSync(javaBin)) {
+    return false;
+  }
+  const result = spawnSync(javaBin, ['-version'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  if (result.status !== 0) {
+    return false;
+  }
+  const majorVersion = parseJavaMajorVersion((result.stderr || '') + '\n' + (result.stdout || ''));
+  return majorVersion !== null && majorVersion >= requiredMajor;
+}
+
+function buildJavaEnv() {
+  if (!JAVA_HOME_REQUIRED) {
+    return process.env;
+  }
+  const env = Object.assign({}, process.env);
+  env.JAVA_HOME = JAVA_HOME_REQUIRED;
+  const javaBinDir = path.join(JAVA_HOME_REQUIRED, 'bin');
+  const existingPath = env.PATH || '';
+  env.PATH = javaBinDir + path.delimiter + existingPath;
+  return env;
+}
+
+function shouldRunPackageTests() {
+  const value = String(process.env.PACKAGE_RUN_TESTS || '').trim().toLowerCase();
+  return value === '1' || value === 'true' || value === 'yes';
 }
 
 function normalizePlatform(platform) {

@@ -1,10 +1,10 @@
 package com.dbsyncstudio.core.sync;
 
-import com.dbsyncstudio.model.sync.IncrementalSyncRequest;
-import com.dbsyncstudio.model.sync.IncrementalSyncResult;
+import com.dbsyncstudio.model.sync.dto.IncrementalSyncRequestDTO;
+import com.dbsyncstudio.model.sync.vo.IncrementalSyncResultVO;
 
 public interface IncrementalSyncEngine {
 
-    IncrementalSyncResult sync(IncrementalSyncRequest request);
+    IncrementalSyncResultVO sync(IncrementalSyncRequestDTO request);
 }
 

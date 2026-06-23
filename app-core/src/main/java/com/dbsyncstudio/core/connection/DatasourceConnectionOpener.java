@@ -1,12 +1,12 @@
 package com.dbsyncstudio.core.connection;
 
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 
 public interface DatasourceConnectionOpener {
 
-    Connection open(DatasourceConfig config) throws SQLException;
+    Connection open(DatasourceConfigDO config) throws SQLException;
 }
 

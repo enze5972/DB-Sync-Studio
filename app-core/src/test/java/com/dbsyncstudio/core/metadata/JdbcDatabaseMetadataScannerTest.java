@@ -1,8 +1,8 @@
 package com.dbsyncstudio.core.metadata;
 
-import com.dbsyncstudio.model.metadata.ColumnMetadata;
-import com.dbsyncstudio.model.metadata.SchemaMetadata;
-import com.dbsyncstudio.model.metadata.TableMetadata;
+import com.dbsyncstudio.model.metadata.entity.ColumnMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.SchemaMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.TableMetadataDO;
 
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.Assert;
@@ -31,19 +31,19 @@ public class JdbcDatabaseMetadataScannerTest {
         }
 
         JdbcDatabaseMetadataScanner scanner = new JdbcDatabaseMetadataScanner();
-        List<SchemaMetadata> schemas;
+        List<SchemaMetadataDO> schemas;
         try (Connection connection = dataSource.getConnection()) {
             schemas = scanner.scan(connection);
         }
 
         Assert.assertFalse(schemas.isEmpty());
 
-        TableMetadata tableMetadata = findTable(schemas, "customer");
+        TableMetadataDO tableMetadata = findTable(schemas, "customer");
         Assert.assertNotNull(tableMetadata);
         Assert.assertEquals(3, tableMetadata.getColumns().size());
 
-        ColumnMetadata idColumn = findColumn(tableMetadata, "id");
-        ColumnMetadata nameColumn = findColumn(tableMetadata, "name");
+        ColumnMetadataDO idColumn = findColumn(tableMetadata, "id");
+        ColumnMetadataDO nameColumn = findColumn(tableMetadata, "name");
         Assert.assertNotNull(idColumn);
         Assert.assertNotNull(nameColumn);
         Assert.assertEquals("ID", idColumn.getName().toUpperCase());
@@ -51,8 +51,8 @@ public class JdbcDatabaseMetadataScannerTest {
         Assert.assertFalse(nameColumn.isPrimaryKey());
     }
 
-    private ColumnMetadata findColumn(TableMetadata tableMetadata, String columnName) {
-        for (ColumnMetadata columnMetadata : tableMetadata.getColumns()) {
+    private ColumnMetadataDO findColumn(TableMetadataDO tableMetadata, String columnName) {
+        for (ColumnMetadataDO columnMetadata : tableMetadata.getColumns()) {
             if (columnMetadata.getName() != null && columnName.equalsIgnoreCase(columnMetadata.getName())) {
                 return columnMetadata;
             }
@@ -60,12 +60,12 @@ public class JdbcDatabaseMetadataScannerTest {
         return null;
     }
 
-    private TableMetadata findTable(List<SchemaMetadata> schemas, String tableName) {
-        for (SchemaMetadata schemaMetadata : schemas) {
+    private TableMetadataDO findTable(List<SchemaMetadataDO> schemas, String tableName) {
+        for (SchemaMetadataDO schemaMetadata : schemas) {
             if (schemaMetadata.getTables() == null) {
                 continue;
             }
-            for (TableMetadata tableMetadata : schemaMetadata.getTables()) {
+            for (TableMetadataDO tableMetadata : schemaMetadata.getTables()) {
                 if (tableMetadata.getTableName() != null
                         && tableName.equalsIgnoreCase(tableMetadata.getTableName())) {
                     return tableMetadata;

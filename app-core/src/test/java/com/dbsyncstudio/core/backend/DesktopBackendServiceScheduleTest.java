@@ -7,23 +7,23 @@ import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
 import com.dbsyncstudio.core.schema.SchemaComparisonEngine;
 import com.dbsyncstudio.core.sync.JdbcFullSyncEngine;
 import com.dbsyncstudio.core.sync.JdbcIncrementalSyncEngine;
-import com.dbsyncstudio.core.backend.BackendDiagnosticsResponse;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.monitoring.vo.BackendDiagnosticsVO;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.sync.IncrementalSyncCheckpointEntry;
+import com.dbsyncstudio.model.sync.entity.IncrementalSyncCheckpointEntryDO;
 import com.dbsyncstudio.model.sync.IncrementalSyncMode;
 import com.dbsyncstudio.model.sync.SyncMode;
-import com.dbsyncstudio.model.sync.SyncTask;
+import com.dbsyncstudio.model.sync.entity.SyncTaskDO;
 import com.dbsyncstudio.model.sync.SyncTaskStatus;
-import com.dbsyncstudio.store.sqlite.SqliteConnectionFactory;
-import com.dbsyncstudio.store.sqlite.SqliteDatasourceRepository;
-import com.dbsyncstudio.store.sqlite.SqliteFieldMappingRepository;
-import com.dbsyncstudio.store.sqlite.SqliteIncrementalSyncCheckpointRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSchemaComparisonHistoryRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSqlExecutionLogRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncTaskRepository;
-import com.dbsyncstudio.store.sync.SqliteExecutionLogRepository;
-import com.dbsyncstudio.store.sync.SqliteSyncCheckpointRepository;
+import com.dbsyncstudio.store.sqlite.DatabaseConnectionFactory;
+import com.dbsyncstudio.store.repository.sqlite.DatasourceRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.FieldMappingRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.IncrementalSyncCheckpointRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SchemaComparisonHistoryRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SqlExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncTaskRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.ExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncCheckpointRepositoryImpl;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -42,15 +42,15 @@ public class DesktopBackendServiceScheduleTest {
         }
         tempDatabase.deleteOnExit();
 
-        SqliteConnectionFactory connectionFactory = new SqliteConnectionFactory(tempDatabase);
-        SqliteDatasourceRepository datasourceRepository = new SqliteDatasourceRepository(connectionFactory);
-        SqliteSyncTaskRepository taskRepository = new SqliteSyncTaskRepository(connectionFactory);
-        SqliteExecutionLogRepository executionLogRepository = new SqliteExecutionLogRepository(connectionFactory);
-        SqliteSyncCheckpointRepository syncCheckpointRepository = new SqliteSyncCheckpointRepository(connectionFactory);
-        SqliteFieldMappingRepository fieldMappingRepository = new SqliteFieldMappingRepository(connectionFactory);
-        SqliteSqlExecutionLogRepository sqlExecutionLogRepository = new SqliteSqlExecutionLogRepository(connectionFactory);
-        SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository = new SqliteSchemaComparisonHistoryRepository(connectionFactory);
-        SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository = new SqliteIncrementalSyncCheckpointRepository(connectionFactory);
+        DatabaseConnectionFactory connectionFactory = new DatabaseConnectionFactory(tempDatabase);
+        DatasourceRepositoryImpl datasourceRepository = new DatasourceRepositoryImpl(connectionFactory);
+        SyncTaskRepositoryImpl taskRepository = new SyncTaskRepositoryImpl(connectionFactory);
+        ExecutionLogRepositoryImpl executionLogRepository = new ExecutionLogRepositoryImpl(connectionFactory);
+        SyncCheckpointRepositoryImpl syncCheckpointRepository = new SyncCheckpointRepositoryImpl(connectionFactory);
+        FieldMappingRepositoryImpl fieldMappingRepository = new FieldMappingRepositoryImpl(connectionFactory);
+        SqlExecutionLogRepositoryImpl sqlExecutionLogRepository = new SqlExecutionLogRepositoryImpl(connectionFactory);
+        SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository = new SchemaComparisonHistoryRepositoryImpl(connectionFactory);
+        IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository = new IncrementalSyncCheckpointRepositoryImpl(connectionFactory);
 
         datasourceRepository.initialize();
         taskRepository.initialize();
@@ -61,7 +61,7 @@ public class DesktopBackendServiceScheduleTest {
         schemaComparisonHistoryRepository.initialize();
         incrementalCheckpointRepository.initialize();
 
-        DatasourceConfig sourceDatasource = new DatasourceConfig();
+        DatasourceConfigDO sourceDatasource = new DatasourceConfigDO();
         sourceDatasource.setName("source");
         sourceDatasource.setType(DatasourceType.MYSQL);
         sourceDatasource.setHost("127.0.0.1");
@@ -71,7 +71,7 @@ public class DesktopBackendServiceScheduleTest {
         sourceDatasource.setPassword("secret");
         long sourceDatasourceId = datasourceRepository.save(sourceDatasource);
 
-        DatasourceConfig targetDatasource = new DatasourceConfig();
+        DatasourceConfigDO targetDatasource = new DatasourceConfigDO();
         targetDatasource.setName("target");
         targetDatasource.setType(DatasourceType.MYSQL);
         targetDatasource.setHost("127.0.0.1");
@@ -81,7 +81,7 @@ public class DesktopBackendServiceScheduleTest {
         targetDatasource.setPassword("secret");
         long targetDatasourceId = datasourceRepository.save(targetDatasource);
 
-        SyncTask task = SyncTask.builder()
+        SyncTaskDO task = SyncTaskDO.builder()
                 .taskName("incremental-task")
                 .sourceDatasourceId(Long.valueOf(sourceDatasourceId))
                 .targetDatasourceId(Long.valueOf(targetDatasourceId))
@@ -97,7 +97,7 @@ public class DesktopBackendServiceScheduleTest {
         long taskId = taskRepository.save(task);
         Assert.assertTrue(taskId > 0L);
 
-        IncrementalSyncCheckpointEntry checkpointEntry = new IncrementalSyncCheckpointEntry();
+        IncrementalSyncCheckpointEntryDO checkpointEntry = new IncrementalSyncCheckpointEntryDO();
         checkpointEntry.setTaskId(Long.valueOf(taskId));
         checkpointEntry.setCheckpointMode("TIMESTAMP");
         checkpointEntry.setCheckpointValue("2026-06-18T10:00:00");
@@ -120,15 +120,15 @@ public class DesktopBackendServiceScheduleTest {
                 new JdbcFullSyncEngine(new JdbcDatabaseMetadataScanner(), new DefaultDatasourceConnectionOpener(), syncCheckpointRepository),
                 new JdbcIncrementalSyncEngine(executionLogRepository, incrementalCheckpointRepository));
 
-        Optional<SyncTask> loadedTask = service.findTaskById(taskId);
+        Optional<SyncTaskDO> loadedTask = service.findTaskById(taskId);
         Assert.assertTrue(loadedTask.isPresent());
         assertCheckpointState(loadedTask.get(), "TIMESTAMP", "2026-06-18T10:00:00", Long.valueOf(123456789L));
 
-        List<SyncTask> allTasks = service.listTasks();
+        List<SyncTaskDO> allTasks = service.listTasks();
         Assert.assertEquals(1, allTasks.size());
         assertCheckpointState(allTasks.get(0), "TIMESTAMP", "2026-06-18T10:00:00", Long.valueOf(123456789L));
 
-        SyncTask scheduledTask = service.updateScheduleState(taskId, false, null, null, null);
+        SyncTaskDO scheduledTask = service.updateScheduleState(taskId, false, null, null, null);
         assertCheckpointState(scheduledTask, "TIMESTAMP", "2026-06-18T10:00:00", Long.valueOf(123456789L));
     }
 
@@ -140,15 +140,15 @@ public class DesktopBackendServiceScheduleTest {
         }
         tempDatabase.deleteOnExit();
 
-        SqliteConnectionFactory connectionFactory = new SqliteConnectionFactory(tempDatabase);
-        SqliteDatasourceRepository datasourceRepository = new SqliteDatasourceRepository(connectionFactory);
-        SqliteSyncTaskRepository taskRepository = new SqliteSyncTaskRepository(connectionFactory);
-        SqliteExecutionLogRepository executionLogRepository = new SqliteExecutionLogRepository(connectionFactory);
-        SqliteSyncCheckpointRepository syncCheckpointRepository = new SqliteSyncCheckpointRepository(connectionFactory);
-        SqliteFieldMappingRepository fieldMappingRepository = new SqliteFieldMappingRepository(connectionFactory);
-        SqliteSqlExecutionLogRepository sqlExecutionLogRepository = new SqliteSqlExecutionLogRepository(connectionFactory);
-        SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository = new SqliteSchemaComparisonHistoryRepository(connectionFactory);
-        SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository = new SqliteIncrementalSyncCheckpointRepository(connectionFactory);
+        DatabaseConnectionFactory connectionFactory = new DatabaseConnectionFactory(tempDatabase);
+        DatasourceRepositoryImpl datasourceRepository = new DatasourceRepositoryImpl(connectionFactory);
+        SyncTaskRepositoryImpl taskRepository = new SyncTaskRepositoryImpl(connectionFactory);
+        ExecutionLogRepositoryImpl executionLogRepository = new ExecutionLogRepositoryImpl(connectionFactory);
+        SyncCheckpointRepositoryImpl syncCheckpointRepository = new SyncCheckpointRepositoryImpl(connectionFactory);
+        FieldMappingRepositoryImpl fieldMappingRepository = new FieldMappingRepositoryImpl(connectionFactory);
+        SqlExecutionLogRepositoryImpl sqlExecutionLogRepository = new SqlExecutionLogRepositoryImpl(connectionFactory);
+        SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository = new SchemaComparisonHistoryRepositoryImpl(connectionFactory);
+        IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository = new IncrementalSyncCheckpointRepositoryImpl(connectionFactory);
 
         datasourceRepository.initialize();
         taskRepository.initialize();
@@ -159,7 +159,7 @@ public class DesktopBackendServiceScheduleTest {
         schemaComparisonHistoryRepository.initialize();
         incrementalCheckpointRepository.initialize();
 
-        DatasourceConfig sourceDatasource = new DatasourceConfig();
+        DatasourceConfigDO sourceDatasource = new DatasourceConfigDO();
         sourceDatasource.setName("source");
         sourceDatasource.setType(DatasourceType.MYSQL);
         sourceDatasource.setHost("127.0.0.1");
@@ -169,7 +169,7 @@ public class DesktopBackendServiceScheduleTest {
         sourceDatasource.setPassword("secret");
         long sourceDatasourceId = datasourceRepository.save(sourceDatasource);
 
-        DatasourceConfig targetDatasource = new DatasourceConfig();
+        DatasourceConfigDO targetDatasource = new DatasourceConfigDO();
         targetDatasource.setName("target");
         targetDatasource.setType(DatasourceType.MYSQL);
         targetDatasource.setHost("127.0.0.1");
@@ -179,7 +179,7 @@ public class DesktopBackendServiceScheduleTest {
         targetDatasource.setPassword("secret");
         long targetDatasourceId = datasourceRepository.save(targetDatasource);
 
-        SyncTask task = SyncTask.builder()
+        SyncTaskDO task = SyncTaskDO.builder()
                 .taskName("schedule-task")
                 .sourceDatasourceId(Long.valueOf(sourceDatasourceId))
                 .targetDatasourceId(Long.valueOf(targetDatasourceId))
@@ -207,7 +207,7 @@ public class DesktopBackendServiceScheduleTest {
                 new JdbcFullSyncEngine(new JdbcDatabaseMetadataScanner(), new DefaultDatasourceConnectionOpener(), syncCheckpointRepository),
                 new JdbcIncrementalSyncEngine(executionLogRepository, incrementalCheckpointRepository));
 
-        SyncTask updated = service.updateScheduleState(taskId, true, "INTERVAL", null, Integer.valueOf(300));
+        SyncTaskDO updated = service.updateScheduleState(taskId, true, "INTERVAL", null, Integer.valueOf(300));
         Assert.assertTrue(updated.getScheduleEnabled().booleanValue());
         Assert.assertEquals("INTERVAL", updated.getScheduleType());
         Assert.assertEquals(Integer.valueOf(300), updated.getScheduleIntervalSeconds());
@@ -217,7 +217,7 @@ public class DesktopBackendServiceScheduleTest {
         service.appendTaskLog(taskId, "INFO", "Task finished successfully");
         service.appendTaskLog(taskId, "WARN", "Scheduled execution skipped because task is already running");
 
-        List<com.dbsyncstudio.model.sync.ExecutionLogEntry> scheduleHistory = service.listTaskScheduleHistory(taskId);
+        List<com.dbsyncstudio.model.sync.entity.ExecutionLogEntryDO> scheduleHistory = service.listTaskScheduleHistory(taskId);
         Assert.assertEquals(2, scheduleHistory.size());
         Assert.assertTrue(scheduleHistory.get(0).getLogMessage().toLowerCase().contains("scheduled execution"));
     }
@@ -230,15 +230,15 @@ public class DesktopBackendServiceScheduleTest {
         }
         tempDatabase.deleteOnExit();
 
-        SqliteConnectionFactory connectionFactory = new SqliteConnectionFactory(tempDatabase);
-        SqliteDatasourceRepository datasourceRepository = new SqliteDatasourceRepository(connectionFactory);
-        SqliteSyncTaskRepository taskRepository = new SqliteSyncTaskRepository(connectionFactory);
-        SqliteExecutionLogRepository executionLogRepository = new SqliteExecutionLogRepository(connectionFactory);
-        SqliteSyncCheckpointRepository syncCheckpointRepository = new SqliteSyncCheckpointRepository(connectionFactory);
-        SqliteFieldMappingRepository fieldMappingRepository = new SqliteFieldMappingRepository(connectionFactory);
-        SqliteSqlExecutionLogRepository sqlExecutionLogRepository = new SqliteSqlExecutionLogRepository(connectionFactory);
-        SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository = new SqliteSchemaComparisonHistoryRepository(connectionFactory);
-        SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository = new SqliteIncrementalSyncCheckpointRepository(connectionFactory);
+        DatabaseConnectionFactory connectionFactory = new DatabaseConnectionFactory(tempDatabase);
+        DatasourceRepositoryImpl datasourceRepository = new DatasourceRepositoryImpl(connectionFactory);
+        SyncTaskRepositoryImpl taskRepository = new SyncTaskRepositoryImpl(connectionFactory);
+        ExecutionLogRepositoryImpl executionLogRepository = new ExecutionLogRepositoryImpl(connectionFactory);
+        SyncCheckpointRepositoryImpl syncCheckpointRepository = new SyncCheckpointRepositoryImpl(connectionFactory);
+        FieldMappingRepositoryImpl fieldMappingRepository = new FieldMappingRepositoryImpl(connectionFactory);
+        SqlExecutionLogRepositoryImpl sqlExecutionLogRepository = new SqlExecutionLogRepositoryImpl(connectionFactory);
+        SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository = new SchemaComparisonHistoryRepositoryImpl(connectionFactory);
+        IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository = new IncrementalSyncCheckpointRepositoryImpl(connectionFactory);
 
         datasourceRepository.initialize();
         taskRepository.initialize();
@@ -249,7 +249,7 @@ public class DesktopBackendServiceScheduleTest {
         schemaComparisonHistoryRepository.initialize();
         incrementalCheckpointRepository.initialize();
 
-        DatasourceConfig sourceDatasource = new DatasourceConfig();
+        DatasourceConfigDO sourceDatasource = new DatasourceConfigDO();
         sourceDatasource.setName("source");
         sourceDatasource.setType(DatasourceType.MYSQL);
         sourceDatasource.setHost("127.0.0.1");
@@ -259,7 +259,7 @@ public class DesktopBackendServiceScheduleTest {
         sourceDatasource.setPassword("secret");
         long sourceDatasourceId = datasourceRepository.save(sourceDatasource);
 
-        DatasourceConfig targetDatasource = new DatasourceConfig();
+        DatasourceConfigDO targetDatasource = new DatasourceConfigDO();
         targetDatasource.setName("target");
         targetDatasource.setType(DatasourceType.MYSQL);
         targetDatasource.setHost("127.0.0.1");
@@ -269,7 +269,7 @@ public class DesktopBackendServiceScheduleTest {
         targetDatasource.setPassword("secret");
         long targetDatasourceId = datasourceRepository.save(targetDatasource);
 
-        SyncTask task = SyncTask.builder()
+        SyncTaskDO task = SyncTaskDO.builder()
                 .taskName("running-task")
                 .sourceDatasourceId(Long.valueOf(sourceDatasourceId))
                 .targetDatasourceId(Long.valueOf(targetDatasourceId))
@@ -300,12 +300,12 @@ public class DesktopBackendServiceScheduleTest {
         int recovered = service.recoverUnfinishedTasks();
         Assert.assertEquals(1, recovered);
 
-        SyncTask recoveredTask = service.findTaskById(taskId).orElse(null);
+        SyncTaskDO recoveredTask = service.findTaskById(taskId).orElse(null);
         Assert.assertNotNull(recoveredTask);
         Assert.assertEquals(SyncTaskStatus.PENDING, recoveredTask.getTaskStatus());
         Assert.assertNotNull(recoveredTask.getEndedAt());
 
-        BackendDiagnosticsResponse diagnostics = service.diagnosticsStatus();
+        BackendDiagnosticsVO diagnostics = service.diagnosticsStatus();
         Assert.assertNotNull(diagnostics);
         Assert.assertTrue(diagnostics.getGeneratedAt() > 0L);
         Assert.assertEquals(1, diagnostics.getTotalTaskCount());
@@ -315,7 +315,7 @@ public class DesktopBackendServiceScheduleTest {
         Assert.assertTrue(diagnostics.getMigrationEntryCount() >= 0);
     }
 
-    private void assertCheckpointState(SyncTask task, String expectedMode, String expectedValue, Long expectedUpdatedAt) {
+    private void assertCheckpointState(SyncTaskDO task, String expectedMode, String expectedValue, Long expectedUpdatedAt) {
         Assert.assertEquals(expectedMode, task.getIncrementalCheckpointMode());
         Assert.assertEquals(expectedValue, task.getIncrementalCheckpointValue());
         Assert.assertEquals(expectedUpdatedAt, task.getIncrementalCheckpointUpdatedAt());

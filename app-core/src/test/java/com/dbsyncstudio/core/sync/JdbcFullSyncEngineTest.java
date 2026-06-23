@@ -2,10 +2,10 @@ package com.dbsyncstudio.core.sync;
 
 import com.dbsyncstudio.core.connection.DatasourceConnectionOpener;
 import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.sync.FullSyncRequest;
-import com.dbsyncstudio.model.sync.FullSyncResult;
+import com.dbsyncstudio.model.sync.dto.FullSyncRequestDTO;
+import com.dbsyncstudio.model.sync.vo.FullSyncResultVO;
 
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.Assert;
@@ -35,7 +35,7 @@ public class JdbcFullSyncEngineTest {
         });
 
         JdbcFullSyncEngine engine = new JdbcFullSyncEngine(new JdbcDatabaseMetadataScanner(), new MapBackedConnectionOpener(dataSources));
-        FullSyncResult result = engine.sync(buildRequest("source", "target", 2, 2, true, "customer_copy"));
+        FullSyncResultVO result = engine.sync(buildRequest("source", "target", 2, 2, true, "customer_copy"));
 
         Assert.assertTrue(result.isSuccess());
         Assert.assertTrue(result.isCreatedTargetTable());
@@ -66,7 +66,7 @@ public class JdbcFullSyncEngineTest {
         });
 
         JdbcFullSyncEngine engine = new JdbcFullSyncEngine(new JdbcDatabaseMetadataScanner(), new MapBackedConnectionOpener(dataSources));
-        FullSyncResult result = engine.sync(buildRequest("source", "target", 1, 1, true, "customer_copy"));
+        FullSyncResultVO result = engine.sync(buildRequest("source", "target", 1, 1, true, "customer_copy"));
 
         Assert.assertTrue(result.isSuccess());
         Assert.assertFalse(result.isCreatedTargetTable());
@@ -78,9 +78,9 @@ public class JdbcFullSyncEngineTest {
         Assert.assertFalse(targetContainsId(targetDataSource, "customer_copy", 99L));
     }
 
-    private FullSyncRequest buildRequest(String sourceKey, String targetKey, int pageSize, int batchSize,
+    private FullSyncRequestDTO buildRequest(String sourceKey, String targetKey, int pageSize, int batchSize,
                                          boolean replaceTargetData, String targetTableName) {
-        return FullSyncRequest.builder()
+        return FullSyncRequestDTO.builder()
                 .sourceDatasource(buildConfig(sourceKey))
                 .targetDatasource(buildConfig(targetKey))
                 .sourceTableName("customer")
@@ -91,8 +91,8 @@ public class JdbcFullSyncEngineTest {
                 .build();
     }
 
-    private DatasourceConfig buildConfig(String key) {
-        DatasourceConfig config = new DatasourceConfig();
+    private DatasourceConfigDO buildConfig(String key) {
+        DatasourceConfigDO config = new DatasourceConfigDO();
         config.setType(DatasourceType.MYSQL);
         config.setRemark(key);
         return config;
@@ -170,7 +170,7 @@ public class JdbcFullSyncEngineTest {
         }
 
         @Override
-        public Connection open(DatasourceConfig config) throws java.sql.SQLException {
+        public Connection open(DatasourceConfigDO config) throws java.sql.SQLException {
             JdbcDataSource dataSource = dataSources.get(config.getRemark());
             if (dataSource == null) {
                 throw new java.sql.SQLException("Unknown test data source: " + config.getRemark());

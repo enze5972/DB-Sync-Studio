@@ -11,4 +11,5 @@ app-shell/src-tauri/resources/backend/lib/
 app-shell/src-tauri/resources/backend/runtime/
 .codegraph/
 .codex-runlogs/
+.codex-shots/
 output/

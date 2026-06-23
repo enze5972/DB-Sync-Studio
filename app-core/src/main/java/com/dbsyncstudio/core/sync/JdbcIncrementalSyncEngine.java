@@ -4,17 +4,19 @@ import com.dbsyncstudio.core.connection.DatasourceConnectionOpener;
 import com.dbsyncstudio.core.connection.DefaultDatasourceConnectionOpener;
 import com.dbsyncstudio.core.metadata.DatabaseMetadataScanner;
 import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
-import com.dbsyncstudio.model.metadata.ColumnMetadata;
-import com.dbsyncstudio.model.metadata.SchemaMetadata;
-import com.dbsyncstudio.model.metadata.TableMetadata;
-import com.dbsyncstudio.model.sync.ExecutionLogEntry;
-import com.dbsyncstudio.model.sync.ExecutionLogRepository;
-import com.dbsyncstudio.model.sync.IncrementalSyncCheckpointEntry;
-import com.dbsyncstudio.model.sync.IncrementalSyncCheckpointRepository;
+import com.dbsyncstudio.core.transform.TransformContext;
+import com.dbsyncstudio.core.transform.TransformPlan;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
+import com.dbsyncstudio.model.metadata.entity.ColumnMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.SchemaMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.TableMetadataDO;
+import com.dbsyncstudio.model.sync.entity.ExecutionLogEntryDO;
+import com.dbsyncstudio.store.repository.ExecutionLogRepository;
+import com.dbsyncstudio.model.sync.entity.IncrementalSyncCheckpointEntryDO;
+import com.dbsyncstudio.store.repository.IncrementalSyncCheckpointRepository;
 import com.dbsyncstudio.model.sync.IncrementalSyncMode;
-import com.dbsyncstudio.model.sync.IncrementalSyncRequest;
-import com.dbsyncstudio.model.sync.IncrementalSyncResult;
+import com.dbsyncstudio.model.sync.dto.IncrementalSyncRequestDTO;
+import com.dbsyncstudio.model.sync.vo.IncrementalSyncResultVO;
 
 import lombok.NonNull;
 
@@ -56,15 +58,19 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
     }
 
     @Override
-    public IncrementalSyncResult sync(IncrementalSyncRequest request) {
+    public IncrementalSyncResultVO sync(IncrementalSyncRequestDTO request) {
         return sync(request, null);
     }
 
-    public IncrementalSyncResult sync(IncrementalSyncRequest request, SyncTaskProgressListener progressListener) {
+    public IncrementalSyncResultVO sync(IncrementalSyncRequestDTO request, SyncTaskProgressListener progressListener) {
+        return sync(request, progressListener, null);
+    }
+
+    public IncrementalSyncResultVO sync(IncrementalSyncRequestDTO request, SyncTaskProgressListener progressListener, TransformPlan transformPlan) {
         long startTime = System.currentTimeMillis();
         try {
             validateRequest(request);
-            IncrementalSyncCheckpointEntry existingCheckpoint = loadCheckpoint(request.getTaskId());
+            IncrementalSyncCheckpointEntryDO existingCheckpoint = loadCheckpoint(request.getTaskId());
             String startValue = request.getCheckpointValue() != null ? request.getCheckpointValue()
                     : (existingCheckpoint == null ? null : existingCheckpoint.getCheckpointValue());
             boolean resumed = existingCheckpoint != null && startValue != null;
@@ -73,12 +79,12 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
                  Connection targetConnection = connectionOpener.open(request.getTargetDatasource())) {
                 targetConnection.setAutoCommit(false);
                 try {
-                    TableMetadata sourceTable = findSourceTable(sourceConnection, request.getSourceTableName(), request.getSourceSchemaName());
-                    TableMetadata targetTable = cloneTargetTable(sourceTable, request.getTargetTableName(), request.getTargetSchemaName());
+                    TableMetadataDO sourceTable = findSourceTable(sourceConnection, request.getSourceTableName(), request.getSourceSchemaName());
+                    TableMetadataDO targetTable = cloneTargetTable(sourceTable, request.getTargetTableName(), request.getTargetSchemaName());
                     boolean createdTargetTable = ensureTargetTableExists(targetConnection, targetTable);
                     IncrementalSyncPlan incrementalSyncPlan = resolveIncrementalPlan(sourceTable, request);
                     CopyRowsResult copyRowsResult = copyRows(sourceConnection, targetConnection, sourceTable, targetTable, request,
-                            incrementalSyncPlan, startValue, progressListener, startTime);
+                            incrementalSyncPlan, startValue, progressListener, startTime, transformPlan);
                     long insertedRows = copyRowsResult.getInsertedRows();
                     String nextValue = copyRowsResult.getCheckpointValue();
                     if (nextValue != null) {
@@ -88,7 +94,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
                         progressListener.saveCheckpoint(request.getCheckpointKey(), nextValue);
                     }
                     targetConnection.commit();
-                    return IncrementalSyncResult.builder()
+                    return IncrementalSyncResultVO.builder()
                             .success(true)
                             .message("Incremental sync completed successfully")
                             .sourceRowCount(insertedRows)
@@ -109,7 +115,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         }
     }
 
-    private void validateRequest(IncrementalSyncRequest request) {
+    private void validateRequest(IncrementalSyncRequestDTO request) {
         if (request == null) {
             throw new IllegalArgumentException("Incremental sync request must not be null");
         }
@@ -136,19 +142,19 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         }
     }
 
-    private IncrementalSyncCheckpointEntry loadCheckpoint(Long taskId) {
+    private IncrementalSyncCheckpointEntryDO loadCheckpoint(Long taskId) {
         if (taskId == null) {
             return null;
         }
-        Optional<IncrementalSyncCheckpointEntry> checkpoint = checkpointRepository.findByTaskId(taskId.longValue());
+        Optional<IncrementalSyncCheckpointEntryDO> checkpoint = checkpointRepository.findByTaskId(taskId.longValue());
         return checkpoint.orElse(null);
     }
 
-    private void saveCheckpoint(IncrementalSyncRequest request, IncrementalSyncPlan plan, String checkpointValue) {
+    private void saveCheckpoint(IncrementalSyncRequestDTO request, IncrementalSyncPlan plan, String checkpointValue) {
         if (request.getTaskId() == null) {
             return;
         }
-        IncrementalSyncCheckpointEntry entry = new IncrementalSyncCheckpointEntry();
+        IncrementalSyncCheckpointEntryDO entry = new IncrementalSyncCheckpointEntryDO();
         entry.setTaskId(request.getTaskId());
         entry.setCheckpointMode(modeName(request.getIncrementalMode()));
         entry.setCheckpointValue(checkpointValue);
@@ -158,10 +164,10 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         checkpointRepository.save(entry);
     }
 
-    private TableMetadata findSourceTable(Connection sourceConnection, String sourceTableName, String sourceSchemaName)
+    private TableMetadataDO findSourceTable(Connection sourceConnection, String sourceTableName, String sourceSchemaName)
             throws SQLException {
-        List<SchemaMetadata> schemas = metadataScanner.scan(sourceConnection);
-        for (SchemaMetadata schemaMetadata : schemas) {
+        List<SchemaMetadataDO> schemas = metadataScanner.scan(sourceConnection);
+        for (SchemaMetadataDO schemaMetadata : schemas) {
             if (sourceSchemaName != null && sourceSchemaName.trim().length() > 0
                     && !sourceSchemaName.equalsIgnoreCase(schemaMetadata.getSchemaName())) {
                 continue;
@@ -169,7 +175,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
             if (schemaMetadata.getTables() == null) {
                 continue;
             }
-            for (TableMetadata tableMetadata : schemaMetadata.getTables()) {
+            for (TableMetadataDO tableMetadata : schemaMetadata.getTables()) {
                 if (sourceTableName.equalsIgnoreCase(tableMetadata.getTableName())) {
                     return tableMetadata;
                 }
@@ -178,18 +184,18 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         throw new SQLException("Source table not found: " + sourceTableName);
     }
 
-    private TableMetadata cloneTargetTable(TableMetadata sourceTable, String targetTableName, String targetSchemaName) {
-        TableMetadata targetTable = new TableMetadata();
+    private TableMetadataDO cloneTargetTable(TableMetadataDO sourceTable, String targetTableName, String targetSchemaName) {
+        TableMetadataDO targetTable = new TableMetadataDO();
         targetTable.setSchemaName(targetSchemaName != null && targetSchemaName.trim().length() > 0
                 ? targetSchemaName.trim()
                 : sourceTable.getSchemaName());
         targetTable.setTableName(targetTableName);
-        targetTable.setColumns(new ArrayList<ColumnMetadata>(sourceTable.getColumns()));
-        targetTable.setIndexes(new ArrayList<com.dbsyncstudio.model.metadata.IndexMetadata>(sourceTable.getIndexes()));
+        targetTable.setColumns(new ArrayList<ColumnMetadataDO>(sourceTable.getColumns()));
+        targetTable.setIndexes(new ArrayList<com.dbsyncstudio.model.metadata.entity.IndexMetadataDO>(sourceTable.getIndexes()));
         return targetTable;
     }
 
-    private boolean ensureTargetTableExists(Connection targetConnection, TableMetadata targetTable) throws SQLException {
+    private boolean ensureTargetTableExists(Connection targetConnection, TableMetadataDO targetTable) throws SQLException {
         if (tableExists(targetConnection, targetTable.getSchemaName(), targetTable.getTableName())) {
             return false;
         }
@@ -217,10 +223,10 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         }
     }
 
-    private CopyRowsResult copyRows(Connection sourceConnection, Connection targetConnection, TableMetadata sourceTable, TableMetadata targetTable,
-                                    IncrementalSyncRequest request, IncrementalSyncPlan plan, String startValue,
-                                    SyncTaskProgressListener progressListener, long startTime) throws SQLException {
-        List<ColumnMetadata> columns = sourceTable.getColumns();
+    private CopyRowsResult copyRows(Connection sourceConnection, Connection targetConnection, TableMetadataDO sourceTable, TableMetadataDO targetTable,
+                                    IncrementalSyncRequestDTO request, IncrementalSyncPlan plan, String startValue,
+                                    SyncTaskProgressListener progressListener, long startTime, TransformPlan transformPlan) throws SQLException {
+        List<ColumnMetadataDO> columns = sourceTable.getColumns();
         String selectSql = buildIncrementalSelectSql(sourceTable, request, plan, startValue != null);
         String insertSql = buildInsertSql(targetTable);
         long insertedRows = 0L;
@@ -245,7 +251,8 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
             try (PreparedStatement statement = targetConnection.prepareStatement(insertSql)) {
                 int batchCounter = 0;
                 for (Object[] row : rows) {
-                    bindRow(statement, row);
+                    Object[] transformedRow = transformPlan == null ? row : transformRow(row, columns, request, transformPlan);
+                    bindRow(statement, transformedRow);
                     statement.addBatch();
                     insertedRows++;
                     batchCounter++;
@@ -271,6 +278,29 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         return new CopyRowsResult(insertedRows, nextCheckpointValue);
     }
 
+    private Object[] transformRow(Object[] row, List<ColumnMetadataDO> columns, IncrementalSyncRequestDTO request, TransformPlan transformPlan) {
+        if (row == null || columns == null || transformPlan == null) {
+            return row;
+        }
+        java.util.Map<String, Object> sourceRow = new java.util.LinkedHashMap<String, Object>();
+        for (int i = 0; i < columns.size() && i < row.length; i++) {
+            sourceRow.put(columns.get(i).getName(), row[i]);
+        }
+        TransformContext context = TransformContext.builder()
+                .taskId(request.getTaskId())
+                .runId(request.getRunId())
+                .tableTaskId(request.getTableTaskId())
+                .sourceRow(sourceRow)
+                .build();
+        java.util.Map<String, Object> transformedRow = transformPlan.transformRow(sourceRow, context);
+        Object[] result = new Object[row.length];
+        for (int i = 0; i < columns.size() && i < result.length; i++) {
+            String columnName = columns.get(i).getName();
+            result[i] = transformedRow.containsKey(columnName) ? transformedRow.get(columnName) : sourceRow.get(columnName);
+        }
+        return result;
+    }
+
     private static final class CopyRowsResult {
 
         private final long insertedRows;
@@ -290,7 +320,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         }
     }
 
-    private List<Object[]> loadRows(Connection sourceConnection, String selectSql, List<ColumnMetadata> columns, IncrementalSyncRequest request,
+    private List<Object[]> loadRows(Connection sourceConnection, String selectSql, List<ColumnMetadataDO> columns, IncrementalSyncRequestDTO request,
                                     IncrementalSyncPlan plan, String startValue, long offset) throws SQLException {
         List<Object[]> rows = new ArrayList<Object[]>();
         try (PreparedStatement statement = sourceConnection.prepareStatement(selectSql)) {
@@ -320,11 +350,11 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         return rows;
     }
 
-    private String buildIncrementalSelectSql(TableMetadata sourceTable, IncrementalSyncRequest request, IncrementalSyncPlan plan,
+    private String buildIncrementalSelectSql(TableMetadataDO sourceTable, IncrementalSyncRequestDTO request, IncrementalSyncPlan plan,
                                              boolean hasCheckpoint) {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT ");
-        List<ColumnMetadata> columns = sourceTable.getColumns();
+        List<ColumnMetadataDO> columns = sourceTable.getColumns();
         for (int i = 0; i < columns.size(); i++) {
             if (i > 0) {
                 sql.append(", ");
@@ -355,10 +385,10 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         return quoteIdentifier(plan.getWatermarkColumnName());
     }
 
-    private String buildInsertSql(TableMetadata targetTable) {
+    private String buildInsertSql(TableMetadataDO targetTable) {
         StringBuilder sql = new StringBuilder();
         sql.append("INSERT INTO ").append(qualifiedTableName(targetTable.getSchemaName(), targetTable.getTableName())).append(" (");
-        List<ColumnMetadata> columns = targetTable.getColumns();
+        List<ColumnMetadataDO> columns = targetTable.getColumns();
         for (int i = 0; i < columns.size(); i++) {
             if (i > 0) {
                 sql.append(", ");
@@ -376,10 +406,10 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         return sql.toString();
     }
 
-    private String buildCreateTableSql(TableMetadata tableMetadata) {
+    private String buildCreateTableSql(TableMetadataDO tableMetadata) {
         StringBuilder sql = new StringBuilder();
         sql.append("CREATE TABLE ").append(qualifiedTableName(tableMetadata.getSchemaName(), tableMetadata.getTableName())).append(" (");
-        List<ColumnMetadata> columns = tableMetadata.getColumns();
+        List<ColumnMetadataDO> columns = tableMetadata.getColumns();
         for (int i = 0; i < columns.size(); i++) {
             if (i > 0) {
                 sql.append(", ");
@@ -391,8 +421,8 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
                 sql.append(" NOT NULL");
             }
         }
-        List<ColumnMetadata> primaryKeyColumns = new ArrayList<ColumnMetadata>();
-        for (ColumnMetadata columnMetadata : columns) {
+        List<ColumnMetadataDO> primaryKeyColumns = new ArrayList<ColumnMetadataDO>();
+        for (ColumnMetadataDO columnMetadata : columns) {
             if (columnMetadata.isPrimaryKey()) {
                 primaryKeyColumns.add(columnMetadata);
             }
@@ -411,7 +441,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         return sql.toString();
     }
 
-    private String resolveColumnDefinition(ColumnMetadata columnMetadata) {
+    private String resolveColumnDefinition(ColumnMetadataDO columnMetadata) {
         String dataType = columnMetadata.getDataType();
         if (dataType == null || dataType.trim().length() == 0) {
             return "VARCHAR(255)";
@@ -461,7 +491,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         }
     }
 
-    private Object parseCheckpointValue(ColumnMetadata watermarkColumn, String checkpointValue) {
+    private Object parseCheckpointValue(ColumnMetadataDO watermarkColumn, String checkpointValue) {
         if (checkpointValue == null || checkpointValue.trim().length() == 0) {
             return null;
         }
@@ -478,14 +508,14 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         return checkpointValue;
     }
 
-    private IncrementalSyncPlan resolveIncrementalPlan(TableMetadata sourceTable, IncrementalSyncRequest request) throws SQLException {
+    private IncrementalSyncPlan resolveIncrementalPlan(TableMetadataDO sourceTable, IncrementalSyncRequestDTO request) throws SQLException {
         String columnName = resolveIncrementColumnName(request);
         if (columnName == null || columnName.trim().length() == 0) {
             throw new SQLException("Incremental column name must not be blank");
         }
-        ColumnMetadata watermarkColumn = null;
-        ColumnMetadata tieBreakerColumn = null;
-        for (ColumnMetadata columnMetadata : sourceTable.getColumns()) {
+        ColumnMetadataDO watermarkColumn = null;
+        ColumnMetadataDO tieBreakerColumn = null;
+        for (ColumnMetadataDO columnMetadata : sourceTable.getColumns()) {
             if (columnName.equalsIgnoreCase(columnMetadata.getName())) {
                 watermarkColumn = columnMetadata;
             }
@@ -499,7 +529,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         return new IncrementalSyncPlan(watermarkColumn, tieBreakerColumn, trimToNull(request.getCompositeWatermarkColumnName()));
     }
 
-    private String resolveIncrementColumnName(IncrementalSyncRequest request) {
+    private String resolveIncrementColumnName(IncrementalSyncRequestDTO request) {
         if (request.getIncrementalMode() == IncrementalSyncMode.AUTO_INCREMENT_ID) {
             return firstNonBlank(request.getAutoIncrementColumnName(), request.getWatermarkColumnName(), "id");
         }
@@ -523,7 +553,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         return parts;
     }
 
-    private int columnIndex(List<ColumnMetadata> columns, String columnName) {
+    private int columnIndex(List<ColumnMetadataDO> columns, String columnName) {
         for (int i = 0; i < columns.size(); i++) {
             if (columnName != null && columnName.equalsIgnoreCase(columns.get(i).getName())) {
                 return i;
@@ -536,7 +566,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
         return value == null ? null : String.valueOf(value);
     }
 
-    private String buildCompositeCheckpointValue(Object[] lastRow, List<ColumnMetadata> columns, IncrementalSyncPlan plan) {
+    private String buildCompositeCheckpointValue(Object[] lastRow, List<ColumnMetadataDO> columns, IncrementalSyncPlan plan) {
         String watermarkValue = stringValue(lastRow[columnIndex(columns, plan.getWatermarkColumnName())]);
         if (plan.getTieBreakerColumnName() == null) {
             return watermarkValue;
@@ -570,7 +600,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
     }
 
     private void logError(String taskKey, String message) {
-        executionLogRepository.append(ExecutionLogEntry.builder()
+        executionLogRepository.append(ExecutionLogEntryDO.builder()
                 .taskId(Long.valueOf(taskKey.hashCode()))
                 .logLevel("ERROR")
                 .logMessage(message)
@@ -578,23 +608,23 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
                 .build());
     }
 
-    private String taskKey(IncrementalSyncRequest request) {
+    private String taskKey(IncrementalSyncRequestDTO request) {
         return request.getCheckpointKey();
     }
 
     private static final class IncrementalSyncPlan {
 
-        private final ColumnMetadata watermarkColumn;
-        private final ColumnMetadata tieBreakerColumn;
+        private final ColumnMetadataDO watermarkColumn;
+        private final ColumnMetadataDO tieBreakerColumn;
         private final String compositeColumnName;
 
-        private IncrementalSyncPlan(ColumnMetadata watermarkColumn, ColumnMetadata tieBreakerColumn, String compositeColumnName) {
+        private IncrementalSyncPlan(ColumnMetadataDO watermarkColumn, ColumnMetadataDO tieBreakerColumn, String compositeColumnName) {
             this.watermarkColumn = watermarkColumn;
             this.tieBreakerColumn = tieBreakerColumn;
             this.compositeColumnName = compositeColumnName;
         }
 
-        private ColumnMetadata getWatermarkColumn() {
+        private ColumnMetadataDO getWatermarkColumn() {
             return watermarkColumn;
         }
 
@@ -610,7 +640,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
             return compositeColumnName;
         }
 
-        private ColumnMetadata getTieBreakerColumn() {
+        private ColumnMetadataDO getTieBreakerColumn() {
             return tieBreakerColumn;
         }
     }
@@ -634,7 +664,7 @@ public class JdbcIncrementalSyncEngine implements IncrementalSyncEngine {
     }
 
     private void logInfo(String taskKey, String message) {
-        executionLogRepository.append(ExecutionLogEntry.builder()
+        executionLogRepository.append(ExecutionLogEntryDO.builder()
                 .taskId(Long.valueOf(taskKey.hashCode()))
                 .logLevel("INFO")
                 .logMessage(message)

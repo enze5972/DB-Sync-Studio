@@ -1,6 +1,6 @@
 package com.dbsyncstudio.core.connection;
 
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
 
 import org.junit.Assert;
@@ -10,7 +10,7 @@ public class JdbcConnectionSupportTest {
 
     @Test
     public void shouldResolveMysqlUrlAndDriver() {
-        DatasourceConfig config = new DatasourceConfig();
+        DatasourceConfigDO config = new DatasourceConfigDO();
         config.setType(DatasourceType.MYSQL);
         config.setHost("127.0.0.1");
         config.setPort(Integer.valueOf(3306));
@@ -26,7 +26,7 @@ public class JdbcConnectionSupportTest {
 
     @Test
     public void shouldResolvePostgresqlUrlAndDriverWithDefaultPort() {
-        DatasourceConfig config = new DatasourceConfig();
+        DatasourceConfigDO config = new DatasourceConfigDO();
         config.setType(DatasourceType.POSTGRESQL);
         config.setHost("127.0.0.1");
         config.setDatabaseName("demo");
@@ -39,7 +39,7 @@ public class JdbcConnectionSupportTest {
 
     @Test
     public void shouldResolveDmUrlAndDriverWithDefaultPort() {
-        DatasourceConfig config = new DatasourceConfig();
+        DatasourceConfigDO config = new DatasourceConfigDO();
         config.setType(DatasourceType.DM);
         config.setHost("127.0.0.1");
         config.setDatabaseName("demo");

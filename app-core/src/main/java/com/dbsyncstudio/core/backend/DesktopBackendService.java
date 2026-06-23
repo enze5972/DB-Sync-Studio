@@ -3,11 +3,14 @@ package com.dbsyncstudio.core.backend;
 import com.dbsyncstudio.core.connection.JdbcDatasourceConnectionTester;
 import com.dbsyncstudio.core.connection.DatasourceConnectionTester;
 import com.dbsyncstudio.core.connection.DefaultDatasourceConnectionOpener;
-import com.dbsyncstudio.core.alert.AlertSendResult;
+import com.dbsyncstudio.model.alert.vo.AlertSendResult;
 import com.dbsyncstudio.core.alert.AlertSenderService;
 import com.dbsyncstudio.core.metadata.DatabaseMetadataScanner;
 import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
 import com.dbsyncstudio.core.mapping.FieldMappingSuggestionMatcher;
+import com.dbsyncstudio.core.transform.TransformContext;
+import com.dbsyncstudio.core.transform.TransformEngine;
+import com.dbsyncstudio.core.transform.TransformPlan;
 import com.dbsyncstudio.core.schema.DatabaseDialect;
 import com.dbsyncstudio.core.schema.SchemaComparisonEngine;
 import com.dbsyncstudio.core.schema.SchemaSqlDialect;
@@ -19,109 +22,123 @@ import com.dbsyncstudio.core.sync.SyncTaskPausedException;
 import com.dbsyncstudio.core.sync.SyncTaskProgressListener;
 import com.dbsyncstudio.core.sync.SyncTaskStoppedException;
 import com.dbsyncstudio.core.scheduler.TaskScheduleCalculator;
-import com.dbsyncstudio.model.datasource.ConnectionTestResult;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
-import com.dbsyncstudio.model.datasource.DatasourceRepository;
+import com.dbsyncstudio.model.datasource.vo.ConnectionTestResultVO;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
+import com.dbsyncstudio.store.repository.DatasourceRepository;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.alert.AlertChannel;
-import com.dbsyncstudio.model.alert.AlertChannelRepository;
+import com.dbsyncstudio.model.alert.entity.AlertChannelDO;
+import com.dbsyncstudio.store.repository.AlertChannelRepository;
 import com.dbsyncstudio.model.alert.AlertChannelType;
-import com.dbsyncstudio.model.alert.AlertDedupState;
-import com.dbsyncstudio.model.alert.AlertDedupStateRepository;
-import com.dbsyncstudio.model.alert.AlertHistoryEntry;
-import com.dbsyncstudio.model.alert.AlertHistoryRepository;
-import com.dbsyncstudio.model.alert.AlertRule;
-import com.dbsyncstudio.model.alert.AlertRuleRepository;
-import com.dbsyncstudio.model.monitoring.DatasourceConnectionMetric;
-import com.dbsyncstudio.model.monitoring.MonitoringCleanupSummary;
-import com.dbsyncstudio.model.monitoring.TaskRunMetric;
-import com.dbsyncstudio.model.monitoring.TaskRunMetricSummary;
-import com.dbsyncstudio.model.monitoring.TableRunMetric;
-import com.dbsyncstudio.model.preview.DataPreviewFilter;
+import com.dbsyncstudio.model.alert.entity.AlertDedupStateDO;
+import com.dbsyncstudio.store.repository.AlertDedupStateRepository;
+import com.dbsyncstudio.model.alert.entity.AlertHistoryEntryDO;
+import com.dbsyncstudio.store.repository.AlertHistoryRepository;
+import com.dbsyncstudio.model.alert.entity.AlertRuleDO;
+import com.dbsyncstudio.store.repository.AlertRuleRepository;
+import com.dbsyncstudio.model.monitoring.entity.DatasourceConnectionMetricDO;
+import com.dbsyncstudio.model.monitoring.vo.BackendDashboardStatsVO;
+import com.dbsyncstudio.model.monitoring.vo.BackendDiagnosticsVO;
+import com.dbsyncstudio.model.monitoring.vo.MonitoringCleanupSummaryVO;
+import com.dbsyncstudio.model.monitoring.vo.MonitoringOverviewVO;
+import com.dbsyncstudio.model.monitoring.vo.MonitoringTrendPointVO;
+import com.dbsyncstudio.model.monitoring.vo.MonitoringTrendVO;
+import com.dbsyncstudio.model.monitoring.entity.TaskRunMetricDO;
+import com.dbsyncstudio.model.monitoring.vo.TaskRunMetricSummaryVO;
+import com.dbsyncstudio.model.monitoring.entity.TableRunMetricDO;
+import com.dbsyncstudio.model.preview.dto.DataPreviewFilterDTO;
 import com.dbsyncstudio.model.preview.DataPreviewFilterOperator;
-import com.dbsyncstudio.model.preview.DataPreviewRequest;
-import com.dbsyncstudio.model.preview.DataPreviewResult;
-import com.dbsyncstudio.model.sync.FieldMappingRepository;
-import com.dbsyncstudio.model.sync.FieldMappingRule;
-import com.dbsyncstudio.model.sync.FieldMappingSuggestion;
-import com.dbsyncstudio.model.sync.ExecutionLogEntry;
-import com.dbsyncstudio.model.sync.ExecutionLogRepository;
-import com.dbsyncstudio.model.sync.SyncRun;
-import com.dbsyncstudio.model.sync.SyncRunLogEntry;
-import com.dbsyncstudio.model.sync.SyncRunLogRepository;
-import com.dbsyncstudio.model.sync.SyncRunRepository;
-import com.dbsyncstudio.model.sync.FullSyncRequest;
-import com.dbsyncstudio.model.sync.FullSyncResult;
-import com.dbsyncstudio.model.sync.IncrementalSyncCheckpointEntry;
-import com.dbsyncstudio.model.sync.IncrementalSyncRequest;
-import com.dbsyncstudio.model.sync.IncrementalSyncResult;
+import com.dbsyncstudio.model.preview.dto.DataPreviewRequestDTO;
+import com.dbsyncstudio.model.preview.vo.DataPreviewResultVO;
+import com.dbsyncstudio.store.repository.FieldMappingRepository;
+import com.dbsyncstudio.model.sync.entity.FieldMappingRuleDO;
+import com.dbsyncstudio.model.sync.vo.FieldMappingSuggestionVO;
+import com.dbsyncstudio.model.sync.entity.ExecutionLogEntryDO;
+import com.dbsyncstudio.store.repository.ExecutionLogRepository;
+import com.dbsyncstudio.model.sync.TransformErrorStrategy;
+import com.dbsyncstudio.model.sync.entity.TransformRuleDO;
+import com.dbsyncstudio.model.sync.dto.TransformTestRequestDTO;
+import com.dbsyncstudio.model.sync.vo.TransformTestResultVO;
+import com.dbsyncstudio.model.sync.entity.SyncRunDO;
+import com.dbsyncstudio.model.sync.entity.SyncRunLogEntryDO;
+import com.dbsyncstudio.store.repository.SyncRunLogRepository;
+import com.dbsyncstudio.store.repository.SyncRunRepository;
+import com.dbsyncstudio.model.sync.dto.FullSyncRequestDTO;
+import com.dbsyncstudio.model.sync.vo.FullSyncResultVO;
+import com.dbsyncstudio.model.sync.entity.IncrementalSyncCheckpointEntryDO;
+import com.dbsyncstudio.model.sync.dto.IncrementalSyncRequestDTO;
+import com.dbsyncstudio.model.sync.vo.IncrementalSyncResultVO;
 import com.dbsyncstudio.model.sync.IncrementalSyncMode;
 import com.dbsyncstudio.model.sync.SyncMode;
-import com.dbsyncstudio.model.sync.SyncTableRun;
-import com.dbsyncstudio.model.sync.SyncTableRunRepository;
-import com.dbsyncstudio.model.sync.SyncTaskTable;
-import com.dbsyncstudio.model.sync.SyncTaskTableRepository;
-import com.dbsyncstudio.model.metadata.SchemaMetadata;
-import com.dbsyncstudio.model.metadata.TableMetadata;
-import com.dbsyncstudio.model.metadata.ColumnMetadata;
-import com.dbsyncstudio.model.schema.SchemaComparisonHistoryEntry;
-import com.dbsyncstudio.model.schema.SchemaComparisonHistoryRepository;
-import com.dbsyncstudio.model.schema.SchemaComparisonRequest;
-import com.dbsyncstudio.model.schema.SchemaComparisonResult;
-import com.dbsyncstudio.model.schema.SchemaDiffEntry;
-import com.dbsyncstudio.model.schema.SchemaSqlPreviewRequest;
-import com.dbsyncstudio.model.schema.SchemaSqlPreviewResult;
-import com.dbsyncstudio.model.validation.RepairDetail;
-import com.dbsyncstudio.model.validation.RepairRequest;
-import com.dbsyncstudio.model.validation.RepairResult;
-import com.dbsyncstudio.model.validation.RepairRun;
+import com.dbsyncstudio.model.sync.entity.SyncTableRunDO;
+import com.dbsyncstudio.store.repository.SyncTableRunRepository;
+import com.dbsyncstudio.model.sync.entity.SyncTaskTableDO;
+import com.dbsyncstudio.store.repository.SyncTaskTableRepository;
+import com.dbsyncstudio.model.metadata.entity.SchemaMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.TableMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.ColumnMetadataDO;
+import com.dbsyncstudio.model.schema.entity.SchemaComparisonHistoryEntryDO;
+import com.dbsyncstudio.store.repository.SchemaComparisonHistoryRepository;
+import com.dbsyncstudio.model.schema.dto.SchemaComparisonRequestDTO;
+import com.dbsyncstudio.model.schema.vo.SchemaComparisonResultVO;
+import com.dbsyncstudio.model.schema.entity.SchemaDiffEntryDO;
+import com.dbsyncstudio.model.schema.dto.SchemaSqlPreviewRequestDTO;
+import com.dbsyncstudio.model.schema.vo.SchemaSqlPreviewResultVO;
+import com.dbsyncstudio.model.validation.entity.RepairDetailDO;
+import com.dbsyncstudio.model.validation.dto.RepairRequestDTO;
+import com.dbsyncstudio.model.validation.vo.RepairResultVO;
+import com.dbsyncstudio.model.validation.entity.RepairRunDO;
 import com.dbsyncstudio.model.validation.RepairType;
-import com.dbsyncstudio.model.validation.ValidationDifference;
+import com.dbsyncstudio.model.validation.entity.ValidationDifferenceDO;
 import com.dbsyncstudio.model.validation.ValidationMode;
-import com.dbsyncstudio.model.validation.ValidationRequest;
-import com.dbsyncstudio.model.validation.ValidationResult;
-import com.dbsyncstudio.model.validation.ValidationRun;
-import com.dbsyncstudio.model.sync.SyncTask;
-import com.dbsyncstudio.model.sync.SyncTaskRepository;
+import com.dbsyncstudio.model.validation.dto.ValidationRequestDTO;
+import com.dbsyncstudio.model.validation.vo.ValidationResultVO;
+import com.dbsyncstudio.model.validation.entity.ValidationRunDO;
+import com.dbsyncstudio.model.sync.entity.SyncTaskDO;
+import com.dbsyncstudio.store.repository.SyncTaskRepository;
 import com.dbsyncstudio.model.sync.SyncTaskStatus;
-import com.dbsyncstudio.model.sync.IncrementalSyncCheckpointRepository;
-import com.dbsyncstudio.model.sync.LogCleanupSummary;
-import com.dbsyncstudio.model.sync.SyncCheckpoint;
-import com.dbsyncstudio.model.sql.SqlExecutionLogEntry;
-import com.dbsyncstudio.model.sql.SqlExecutionLogRepository;
-import com.dbsyncstudio.model.sql.SqlExecutionRequest;
-import com.dbsyncstudio.model.sql.SqlExecutionResult;
-import com.dbsyncstudio.core.backend.AppSettingsResponse;
-import com.dbsyncstudio.store.sqlite.SqliteConnectionFactory;
+import com.dbsyncstudio.store.repository.IncrementalSyncCheckpointRepository;
+import com.dbsyncstudio.model.sync.vo.LogCleanupSummaryVO;
+import com.dbsyncstudio.model.sync.dto.LogCleanupDTO;
+import com.dbsyncstudio.model.sync.dto.TaskBatchRunDTO;
+import com.dbsyncstudio.model.sync.dto.TaskBatchTableDTO;
+import com.dbsyncstudio.model.sync.vo.SyncRunDetailVO;
+import com.dbsyncstudio.model.sync.entity.SyncCheckpointDO;
+import com.dbsyncstudio.model.sql.entity.SqlExecutionLogEntryDO;
+import com.dbsyncstudio.store.repository.SqlExecutionLogRepository;
+import com.dbsyncstudio.model.sql.dto.SqlExecutionRequestDTO;
+import com.dbsyncstudio.model.sql.vo.SqlExecutionResultVO;
+import com.dbsyncstudio.model.settings.vo.AppSettingsVO;
+import com.dbsyncstudio.store.sqlite.DatabaseConnectionFactory;
 import com.dbsyncstudio.store.sqlite.LocalSecretCryptoService;
 import com.dbsyncstudio.store.sqlite.LocalSecretKeyProvider;
-import com.dbsyncstudio.store.sqlite.SqliteAppSettingsRepository;
-import com.dbsyncstudio.store.sqlite.SqliteDatasourceRepository;
-import com.dbsyncstudio.store.sqlite.SqliteFieldMappingRepository;
-import com.dbsyncstudio.store.sqlite.SqliteAlertChannelRepository;
-import com.dbsyncstudio.store.sqlite.SqliteAlertDedupStateRepository;
-import com.dbsyncstudio.store.sqlite.SqliteAlertHistoryRepository;
-import com.dbsyncstudio.store.sqlite.SqliteAlertRuleRepository;
-import com.dbsyncstudio.store.sqlite.SqliteDatabasePaths;
-import com.dbsyncstudio.store.sqlite.SqliteRepairRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncRunLogRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncRunRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncTableRunRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncTaskTableRepository;
-import com.dbsyncstudio.store.sqlite.SqliteMonitoringRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSqlExecutionLogRepository;
-import com.dbsyncstudio.store.sqlite.SqliteValidationRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSchemaComparisonHistoryRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncTaskRepository;
-import com.dbsyncstudio.store.sync.SqliteExecutionLogRepository;
-import com.dbsyncstudio.store.sqlite.SqliteIncrementalSyncCheckpointRepository;
-import com.dbsyncstudio.store.sync.SqliteSyncCheckpointRepository;
-import com.dbsyncstudio.store.sqlite.SqliteDatabasePaths;
-import com.dbsyncstudio.model.settings.AppSettings;
-import com.dbsyncstudio.model.settings.AppSettingsRepository;
-import com.dbsyncstudio.model.settings.AppBuildInfo;
-import com.dbsyncstudio.model.settings.AppLicenseInfo;
-import com.dbsyncstudio.model.settings.AppUpdateCheckResult;
+import com.dbsyncstudio.store.repository.sqlite.AppSettingsRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.DatasourceRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.FieldMappingRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.FieldTransformRuleRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.AlertChannelRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.AlertDedupStateRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.AlertHistoryRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.AlertRuleRepositoryImpl;
+import com.dbsyncstudio.store.sqlite.DatabasePaths;
+import com.dbsyncstudio.store.repository.sqlite.RepairRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncRunLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncRunRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncTableRunRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncTaskTableRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.MonitoringRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SqlExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.ValidationRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SchemaComparisonHistoryRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncTaskRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.ExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.IncrementalSyncCheckpointRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncCheckpointRepositoryImpl;
+import com.dbsyncstudio.store.sqlite.DatabasePaths;
+import com.dbsyncstudio.model.settings.entity.AppSettingsDO;
+import com.dbsyncstudio.store.repository.AppSettingsRepository;
+import com.dbsyncstudio.model.settings.vo.AppBuildInfoVO;
+import com.dbsyncstudio.model.settings.vo.AppLicenseInfoVO;
+import com.dbsyncstudio.model.settings.vo.AppUpdateCheckResultVO;
 
 import java.io.File;
 import java.sql.Connection;
@@ -156,26 +173,27 @@ public class DesktopBackendService {
     private static final int DEFAULT_MONITORING_RETENTION_DAYS = 30;
     private static final int DEFAULT_ALERT_COOLDOWN_SECONDS = 600;
 
-    private final SqliteDatasourceRepository datasourceRepository;
-    private final SqliteSyncTaskRepository syncTaskRepository;
-    private final SqliteExecutionLogRepository executionLogRepository;
-    private final SqliteSyncCheckpointRepository checkpointRepository;
-    private final SqliteFieldMappingRepository fieldMappingRepository;
-    private final SqliteSyncTaskTableRepository syncTaskTableRepository;
-    private final SqliteSyncRunRepository syncRunRepository;
-    private final SqliteSyncTableRunRepository syncTableRunRepository;
-    private final SqliteSyncRunLogRepository syncRunLogRepository;
-    private final SqliteSqlExecutionLogRepository sqlExecutionLogRepository;
-    private final SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository;
-    private final SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository;
-    private final SqliteValidationRepository validationRepository;
-    private final SqliteRepairRepository repairRepository;
-    private final SqliteMonitoringRepository monitoringRepository;
-    private final SqliteAlertRuleRepository alertRuleRepository;
-    private final SqliteAlertChannelRepository alertChannelRepository;
-    private final SqliteAlertHistoryRepository alertHistoryRepository;
-    private final SqliteAlertDedupStateRepository alertDedupStateRepository;
-    private final SqliteAppSettingsRepository appSettingsRepository;
+    private final DatasourceRepositoryImpl datasourceRepository;
+    private final SyncTaskRepositoryImpl syncTaskRepository;
+    private final ExecutionLogRepositoryImpl executionLogRepository;
+    private final SyncCheckpointRepositoryImpl checkpointRepository;
+    private final FieldMappingRepositoryImpl fieldMappingRepository;
+    private final SyncTaskTableRepositoryImpl syncTaskTableRepository;
+    private final SyncRunRepositoryImpl syncRunRepository;
+    private final SyncTableRunRepositoryImpl syncTableRunRepository;
+    private final SyncRunLogRepositoryImpl syncRunLogRepository;
+    private final SqlExecutionLogRepositoryImpl sqlExecutionLogRepository;
+    private final SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository;
+    private final IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository;
+    private final ValidationRepositoryImpl validationRepository;
+    private final RepairRepositoryImpl repairRepository;
+    private final MonitoringRepositoryImpl monitoringRepository;
+    private FieldTransformRuleRepositoryImpl transformRuleRepository;
+    private final AlertRuleRepositoryImpl alertRuleRepository;
+    private final AlertChannelRepositoryImpl alertChannelRepository;
+    private final AlertHistoryRepositoryImpl alertHistoryRepository;
+    private final AlertDedupStateRepositoryImpl alertDedupStateRepository;
+    private final AppSettingsRepositoryImpl appSettingsRepository;
     private final LocalSecretCryptoService alertCryptoService;
     private final AlertSenderService alertSenderService;
     private final DatabaseMetadataScanner metadataScanner;
@@ -186,39 +204,40 @@ public class DesktopBackendService {
     private final DataRepairEngine dataRepairEngine;
     private final JdbcFullSyncEngine fullSyncEngine;
     private final JdbcIncrementalSyncEngine incrementalSyncEngine;
+    private final TransformEngine transformEngine = new TransformEngine();
     private final ExecutorService taskExecutor;
     private final Map<Long, TaskExecutionState> taskExecutionStates;
-    private SqliteConnectionFactory connectionFactory;
+    private DatabaseConnectionFactory connectionFactory;
     private volatile int lastRecoveredTaskCount;
-    private volatile AppSettings cachedSettings;
+    private volatile AppSettingsDO cachedSettings;
 
-    private AppLicenseService licenseService() {
+    private LicenseService licenseService() {
         if (appSettingsRepository == null) {
             return null;
         }
-        return new AppLicenseService(appSettingsRepository, alertCryptoService);
+        return new LicenseService(appSettingsRepository, alertCryptoService);
     }
 
-    public DesktopBackendService(SqliteDatasourceRepository datasourceRepository,
-                                 SqliteSyncTaskRepository syncTaskRepository,
-                                 SqliteExecutionLogRepository executionLogRepository,
-                                 SqliteSyncCheckpointRepository checkpointRepository,
-                                 SqliteFieldMappingRepository fieldMappingRepository,
-                                 SqliteSyncTaskTableRepository syncTaskTableRepository,
-                                 SqliteSyncRunRepository syncRunRepository,
-                                 SqliteSyncTableRunRepository syncTableRunRepository,
-                                 SqliteSyncRunLogRepository syncRunLogRepository,
-                                 SqliteSqlExecutionLogRepository sqlExecutionLogRepository,
-                                 SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository,
-                                 SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository,
-                                 SqliteValidationRepository validationRepository,
-                                 SqliteRepairRepository repairRepository,
-                                 SqliteMonitoringRepository monitoringRepository,
-                                 SqliteAlertRuleRepository alertRuleRepository,
-                                 SqliteAlertChannelRepository alertChannelRepository,
-                                 SqliteAlertHistoryRepository alertHistoryRepository,
-                                 SqliteAlertDedupStateRepository alertDedupStateRepository,
-                                 SqliteAppSettingsRepository appSettingsRepository,
+    public DesktopBackendService(DatasourceRepositoryImpl datasourceRepository,
+                                 SyncTaskRepositoryImpl syncTaskRepository,
+                                 ExecutionLogRepositoryImpl executionLogRepository,
+                                 SyncCheckpointRepositoryImpl checkpointRepository,
+                                 FieldMappingRepositoryImpl fieldMappingRepository,
+                                 SyncTaskTableRepositoryImpl syncTaskTableRepository,
+                                 SyncRunRepositoryImpl syncRunRepository,
+                                 SyncTableRunRepositoryImpl syncTableRunRepository,
+                                 SyncRunLogRepositoryImpl syncRunLogRepository,
+                                 SqlExecutionLogRepositoryImpl sqlExecutionLogRepository,
+                                 SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository,
+                                 IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository,
+                                 ValidationRepositoryImpl validationRepository,
+                                 RepairRepositoryImpl repairRepository,
+                                 MonitoringRepositoryImpl monitoringRepository,
+                                 AlertRuleRepositoryImpl alertRuleRepository,
+                                 AlertChannelRepositoryImpl alertChannelRepository,
+                                 AlertHistoryRepositoryImpl alertHistoryRepository,
+                                 AlertDedupStateRepositoryImpl alertDedupStateRepository,
+                                 AppSettingsRepositoryImpl appSettingsRepository,
                                  LocalSecretCryptoService alertCryptoService,
                                  DatabaseMetadataScanner metadataScanner,
                                  DatasourceConnectionTester connectionTester,
@@ -264,14 +283,14 @@ public class DesktopBackendService {
         this.lastRecoveredTaskCount = 0;
     }
 
-    public DesktopBackendService(SqliteDatasourceRepository datasourceRepository,
-                                 SqliteSyncTaskRepository syncTaskRepository,
-                                 SqliteExecutionLogRepository executionLogRepository,
-                                 SqliteSyncCheckpointRepository checkpointRepository,
-                                 SqliteFieldMappingRepository fieldMappingRepository,
-                                 SqliteSqlExecutionLogRepository sqlExecutionLogRepository,
-                                 SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository,
-                                 SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository,
+    public DesktopBackendService(DatasourceRepositoryImpl datasourceRepository,
+                                 SyncTaskRepositoryImpl syncTaskRepository,
+                                 ExecutionLogRepositoryImpl executionLogRepository,
+                                 SyncCheckpointRepositoryImpl checkpointRepository,
+                                 FieldMappingRepositoryImpl fieldMappingRepository,
+                                 SqlExecutionLogRepositoryImpl sqlExecutionLogRepository,
+                                 SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository,
+                                 IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository,
                                  DatabaseMetadataScanner metadataScanner,
                                  DatasourceConnectionTester connectionTester,
                                  FieldMappingSuggestionMatcher fieldMappingSuggestionMatcher,
@@ -309,20 +328,20 @@ public class DesktopBackendService {
                 incrementalSyncEngine);
     }
 
-    public DesktopBackendService(SqliteDatasourceRepository datasourceRepository,
-                                 SqliteSyncTaskRepository syncTaskRepository,
-                                 SqliteExecutionLogRepository executionLogRepository,
-                                 SqliteSyncCheckpointRepository checkpointRepository,
-                                 SqliteFieldMappingRepository fieldMappingRepository,
-                                 SqliteSyncTaskTableRepository syncTaskTableRepository,
-                                 SqliteSyncRunRepository syncRunRepository,
-                                 SqliteSyncTableRunRepository syncTableRunRepository,
-                                 SqliteSyncRunLogRepository syncRunLogRepository,
-                                 SqliteSqlExecutionLogRepository sqlExecutionLogRepository,
-                                 SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository,
-                                 SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository,
-                                 SqliteValidationRepository validationRepository,
-                                 SqliteRepairRepository repairRepository,
+    public DesktopBackendService(DatasourceRepositoryImpl datasourceRepository,
+                                 SyncTaskRepositoryImpl syncTaskRepository,
+                                 ExecutionLogRepositoryImpl executionLogRepository,
+                                 SyncCheckpointRepositoryImpl checkpointRepository,
+                                 FieldMappingRepositoryImpl fieldMappingRepository,
+                                 SyncTaskTableRepositoryImpl syncTaskTableRepository,
+                                 SyncRunRepositoryImpl syncRunRepository,
+                                 SyncTableRunRepositoryImpl syncTableRunRepository,
+                                 SyncRunLogRepositoryImpl syncRunLogRepository,
+                                 SqlExecutionLogRepositoryImpl sqlExecutionLogRepository,
+                                 SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository,
+                                 IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository,
+                                 ValidationRepositoryImpl validationRepository,
+                                 RepairRepositoryImpl repairRepository,
                                  DatabaseMetadataScanner metadataScanner,
                                  DatasourceConnectionTester connectionTester,
                                  FieldMappingSuggestionMatcher fieldMappingSuggestionMatcher,
@@ -362,26 +381,26 @@ public class DesktopBackendService {
                 incrementalSyncEngine);
     }
 
-    public DesktopBackendService(SqliteDatasourceRepository datasourceRepository,
-                                 SqliteSyncTaskRepository syncTaskRepository,
-                                 SqliteExecutionLogRepository executionLogRepository,
-                                 SqliteSyncCheckpointRepository checkpointRepository,
-                                 SqliteFieldMappingRepository fieldMappingRepository,
-                                 SqliteSyncTaskTableRepository syncTaskTableRepository,
-                                 SqliteSyncRunRepository syncRunRepository,
-                                 SqliteSyncTableRunRepository syncTableRunRepository,
-                                 SqliteSyncRunLogRepository syncRunLogRepository,
-                                 SqliteSqlExecutionLogRepository sqlExecutionLogRepository,
-                                 SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository,
-                                 SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository,
-                                 SqliteValidationRepository validationRepository,
-                                 SqliteRepairRepository repairRepository,
-                                 SqliteMonitoringRepository monitoringRepository,
-                                 SqliteAlertRuleRepository alertRuleRepository,
-                                 SqliteAlertChannelRepository alertChannelRepository,
-                                 SqliteAlertHistoryRepository alertHistoryRepository,
-                                 SqliteAlertDedupStateRepository alertDedupStateRepository,
-                                 SqliteAppSettingsRepository appSettingsRepository,
+    public DesktopBackendService(DatasourceRepositoryImpl datasourceRepository,
+                                 SyncTaskRepositoryImpl syncTaskRepository,
+                                 ExecutionLogRepositoryImpl executionLogRepository,
+                                 SyncCheckpointRepositoryImpl checkpointRepository,
+                                 FieldMappingRepositoryImpl fieldMappingRepository,
+                                 SyncTaskTableRepositoryImpl syncTaskTableRepository,
+                                 SyncRunRepositoryImpl syncRunRepository,
+                                 SyncTableRunRepositoryImpl syncTableRunRepository,
+                                 SyncRunLogRepositoryImpl syncRunLogRepository,
+                                 SqlExecutionLogRepositoryImpl sqlExecutionLogRepository,
+                                 SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository,
+                                 IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository,
+                                 ValidationRepositoryImpl validationRepository,
+                                 RepairRepositoryImpl repairRepository,
+                                 MonitoringRepositoryImpl monitoringRepository,
+                                 AlertRuleRepositoryImpl alertRuleRepository,
+                                 AlertChannelRepositoryImpl alertChannelRepository,
+                                 AlertHistoryRepositoryImpl alertHistoryRepository,
+                                 AlertDedupStateRepositoryImpl alertDedupStateRepository,
+                                 AppSettingsRepositoryImpl appSettingsRepository,
                                  LocalSecretCryptoService alertCryptoService,
                                  DatabaseMetadataScanner metadataScanner,
                                  DatasourceConnectionTester connectionTester,
@@ -391,7 +410,7 @@ public class DesktopBackendService {
                                  DataRepairEngine dataRepairEngine,
                                  JdbcFullSyncEngine fullSyncEngine,
                                  JdbcIncrementalSyncEngine incrementalSyncEngine,
-                                 SqliteConnectionFactory connectionFactory) {
+                                 DatabaseConnectionFactory connectionFactory) {
         this(datasourceRepository,
                 syncTaskRepository,
                 executionLogRepository,
@@ -425,21 +444,21 @@ public class DesktopBackendService {
         this.lastRecoveredTaskCount = 0;
     }
 
-    public DesktopBackendService(SqliteDatasourceRepository datasourceRepository,
-                                 SqliteSyncTaskRepository syncTaskRepository,
-                                 SqliteExecutionLogRepository executionLogRepository,
-                                 SqliteSyncCheckpointRepository checkpointRepository,
-                                 SqliteFieldMappingRepository fieldMappingRepository,
-                                 SqliteSyncTaskTableRepository syncTaskTableRepository,
-                                 SqliteSyncRunRepository syncRunRepository,
-                                 SqliteSyncTableRunRepository syncTableRunRepository,
-                                 SqliteSyncRunLogRepository syncRunLogRepository,
-                                 SqliteSqlExecutionLogRepository sqlExecutionLogRepository,
-                                 SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository,
-                                 SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository,
-                                 SqliteValidationRepository validationRepository,
-                                 SqliteRepairRepository repairRepository,
-                                 SqliteMonitoringRepository monitoringRepository,
+    public DesktopBackendService(DatasourceRepositoryImpl datasourceRepository,
+                                 SyncTaskRepositoryImpl syncTaskRepository,
+                                 ExecutionLogRepositoryImpl executionLogRepository,
+                                 SyncCheckpointRepositoryImpl checkpointRepository,
+                                 FieldMappingRepositoryImpl fieldMappingRepository,
+                                 SyncTaskTableRepositoryImpl syncTaskTableRepository,
+                                 SyncRunRepositoryImpl syncRunRepository,
+                                 SyncTableRunRepositoryImpl syncTableRunRepository,
+                                 SyncRunLogRepositoryImpl syncRunLogRepository,
+                                 SqlExecutionLogRepositoryImpl sqlExecutionLogRepository,
+                                 SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository,
+                                 IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository,
+                                 ValidationRepositoryImpl validationRepository,
+                                 RepairRepositoryImpl repairRepository,
+                                 MonitoringRepositoryImpl monitoringRepository,
                                  DatabaseMetadataScanner metadataScanner,
                                  DatasourceConnectionTester connectionTester,
                                  FieldMappingSuggestionMatcher fieldMappingSuggestionMatcher,
@@ -484,31 +503,32 @@ public class DesktopBackendService {
     }
 
     public static DesktopBackendService createDefault(File databaseFile) throws SQLException {
-        SqliteConnectionFactory connectionFactory = new SqliteConnectionFactory(databaseFile);
+        DatabaseConnectionFactory connectionFactory = new DatabaseConnectionFactory(databaseFile);
         JdbcDatabaseMetadataScanner metadataScanner = new JdbcDatabaseMetadataScanner();
         DefaultDatasourceConnectionOpener connectionOpener = new DefaultDatasourceConnectionOpener();
-        SqliteDatasourceRepository datasourceRepository = new SqliteDatasourceRepository(connectionFactory);
-        SqliteSyncTaskRepository syncTaskRepository = new SqliteSyncTaskRepository(connectionFactory);
-        SqliteExecutionLogRepository executionLogRepository = new SqliteExecutionLogRepository(connectionFactory);
-        SqliteSyncCheckpointRepository checkpointRepository = new SqliteSyncCheckpointRepository(connectionFactory);
-        SqliteFieldMappingRepository fieldMappingRepository = new SqliteFieldMappingRepository(connectionFactory);
-        SqliteSyncTaskTableRepository syncTaskTableRepository = new SqliteSyncTaskTableRepository(connectionFactory);
-        SqliteSyncRunRepository syncRunRepository = new SqliteSyncRunRepository(connectionFactory);
-        SqliteSyncTableRunRepository syncTableRunRepository = new SqliteSyncTableRunRepository(connectionFactory);
-        SqliteSyncRunLogRepository syncRunLogRepository = new SqliteSyncRunLogRepository(connectionFactory);
-        SqliteSqlExecutionLogRepository sqlExecutionLogRepository = new SqliteSqlExecutionLogRepository(connectionFactory);
-        SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository = new SqliteSchemaComparisonHistoryRepository(connectionFactory);
-        SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository = new SqliteIncrementalSyncCheckpointRepository(connectionFactory);
-        SqliteValidationRepository validationRepository = new SqliteValidationRepository(connectionFactory);
-        SqliteRepairRepository repairRepository = new SqliteRepairRepository(connectionFactory);
-        SqliteMonitoringRepository monitoringRepository = new SqliteMonitoringRepository(connectionFactory);
-        SqliteAppSettingsRepository appSettingsRepository = new SqliteAppSettingsRepository(connectionFactory);
+        DatasourceRepositoryImpl datasourceRepository = new DatasourceRepositoryImpl(connectionFactory);
+        SyncTaskRepositoryImpl syncTaskRepository = new SyncTaskRepositoryImpl(connectionFactory);
+        ExecutionLogRepositoryImpl executionLogRepository = new ExecutionLogRepositoryImpl(connectionFactory);
+        SyncCheckpointRepositoryImpl checkpointRepository = new SyncCheckpointRepositoryImpl(connectionFactory);
+        FieldMappingRepositoryImpl fieldMappingRepository = new FieldMappingRepositoryImpl(connectionFactory);
+        SyncTaskTableRepositoryImpl syncTaskTableRepository = new SyncTaskTableRepositoryImpl(connectionFactory);
+        SyncRunRepositoryImpl syncRunRepository = new SyncRunRepositoryImpl(connectionFactory);
+        SyncTableRunRepositoryImpl syncTableRunRepository = new SyncTableRunRepositoryImpl(connectionFactory);
+        SyncRunLogRepositoryImpl syncRunLogRepository = new SyncRunLogRepositoryImpl(connectionFactory);
+        SqlExecutionLogRepositoryImpl sqlExecutionLogRepository = new SqlExecutionLogRepositoryImpl(connectionFactory);
+        SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository = new SchemaComparisonHistoryRepositoryImpl(connectionFactory);
+        IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository = new IncrementalSyncCheckpointRepositoryImpl(connectionFactory);
+        ValidationRepositoryImpl validationRepository = new ValidationRepositoryImpl(connectionFactory);
+        RepairRepositoryImpl repairRepository = new RepairRepositoryImpl(connectionFactory);
+        MonitoringRepositoryImpl monitoringRepository = new MonitoringRepositoryImpl(connectionFactory);
+        FieldTransformRuleRepositoryImpl transformRuleRepository = new FieldTransformRuleRepositoryImpl(connectionFactory);
+        AppSettingsRepositoryImpl appSettingsRepository = new AppSettingsRepositoryImpl(connectionFactory);
         LocalSecretCryptoService alertCryptoService =
-                new LocalSecretCryptoService(new LocalSecretKeyProvider(SqliteDatabasePaths.defaultAlertSecretKeyFile()));
-        SqliteAlertRuleRepository alertRuleRepository = new SqliteAlertRuleRepository(connectionFactory);
-        SqliteAlertChannelRepository alertChannelRepository = new SqliteAlertChannelRepository(connectionFactory, alertCryptoService);
-        SqliteAlertHistoryRepository alertHistoryRepository = new SqliteAlertHistoryRepository(connectionFactory);
-        SqliteAlertDedupStateRepository alertDedupStateRepository = new SqliteAlertDedupStateRepository(connectionFactory);
+                new LocalSecretCryptoService(new LocalSecretKeyProvider(DatabasePaths.defaultAlertSecretKeyFile()));
+        AlertRuleRepositoryImpl alertRuleRepository = new AlertRuleRepositoryImpl(connectionFactory);
+        AlertChannelRepositoryImpl alertChannelRepository = new AlertChannelRepositoryImpl(connectionFactory, alertCryptoService);
+        AlertHistoryRepositoryImpl alertHistoryRepository = new AlertHistoryRepositoryImpl(connectionFactory);
+        AlertDedupStateRepositoryImpl alertDedupStateRepository = new AlertDedupStateRepositoryImpl(connectionFactory);
 
         datasourceRepository.initialize();
         syncTaskRepository.initialize();
@@ -525,6 +545,7 @@ public class DesktopBackendService {
         validationRepository.initialize();
         repairRepository.initialize();
         monitoringRepository.initialize();
+        transformRuleRepository.initialize();
         appSettingsRepository.initialize();
         alertRuleRepository.initialize();
         alertChannelRepository.initialize();
@@ -562,15 +583,16 @@ public class DesktopBackendService {
                 new JdbcFullSyncEngine(metadataScanner, connectionOpener, checkpointRepository),
                 new JdbcIncrementalSyncEngine(executionLogRepository, incrementalCheckpointRepository),
                 connectionFactory);
+        service.transformRuleRepository = transformRuleRepository;
         service.lastRecoveredTaskCount = service.recoverUnfinishedTasks();
         return service;
     }
 
-    public List<DatasourceConfig> listDatasources() throws SQLException {
+    public List<DatasourceConfigDO> listDatasources() throws SQLException {
         return datasourceRepository.findAll();
     }
 
-    public DatasourceConfig saveDatasource(DatasourceConfig config) throws SQLException {
+    public DatasourceConfigDO saveDatasource(DatasourceConfigDO config) throws SQLException {
         validateDatasource(config);
         datasourceRepository.save(config);
         return config;
@@ -580,13 +602,13 @@ public class DesktopBackendService {
         return datasourceRepository.deleteById(id);
     }
 
-    public Optional<DatasourceConfig> findDatasourceById(long id) throws SQLException {
+    public Optional<DatasourceConfigDO> findDatasourceById(long id) throws SQLException {
         return datasourceRepository.findById(id);
     }
 
-    public ConnectionTestResult testConnection(DatasourceConfig config) {
+    public ConnectionTestResultVO testConnection(DatasourceConfigDO config) {
         validateDatasource(config);
-        ConnectionTestResult result = connectionTester.test(config);
+        ConnectionTestResultVO result = connectionTester.test(config);
         captureDatasourceConnectionMetric(config, result);
         if (!result.isSuccess()) {
             triggerAlert("DATASOURCE_CONNECTION_FAILED", null, null, null, "ERROR",
@@ -595,11 +617,11 @@ public class DesktopBackendService {
         return result;
     }
 
-    public List<SyncTask> listTasks() throws SQLException {
-        List<SyncTask> tasks = syncTaskRepository.findAll();
-        List<SyncTask> result = new ArrayList<SyncTask>();
-        for (SyncTask task : tasks) {
-            SyncTask loadedTask = applyIncrementalCheckpoint(task);
+    public List<SyncTaskDO> listTasks() throws SQLException {
+        List<SyncTaskDO> tasks = syncTaskRepository.findAll();
+        List<SyncTaskDO> result = new ArrayList<SyncTaskDO>();
+        for (SyncTaskDO task : tasks) {
+            SyncTaskDO loadedTask = applyIncrementalCheckpoint(task);
             if (syncTaskTableRepository != null) {
                 loadedTask.setTaskTables(syncTaskTableRepository.findByTaskId(task.getId().longValue()));
             }
@@ -608,19 +630,19 @@ public class DesktopBackendService {
         return result;
     }
 
-    public Optional<SyncTask> findTaskById(long taskId) throws SQLException {
-        Optional<SyncTask> task = syncTaskRepository.findById(taskId);
+    public Optional<SyncTaskDO> findTaskById(long taskId) throws SQLException {
+        Optional<SyncTaskDO> task = syncTaskRepository.findById(taskId);
         if (!task.isPresent()) {
             return task;
         }
-        SyncTask loadedTask = applyIncrementalCheckpoint(task.get());
+        SyncTaskDO loadedTask = applyIncrementalCheckpoint(task.get());
         if (syncTaskTableRepository != null) {
             loadedTask.setTaskTables(syncTaskTableRepository.findByTaskId(taskId));
         }
         return Optional.of(loadedTask);
     }
 
-    public SyncTask saveTask(SyncTask task) throws SQLException {
+    public SyncTaskDO saveTask(SyncTaskDO task) throws SQLException {
         validateTask(task);
         if (task.getTaskStatus() == null) {
             task.setTaskStatus(SyncTaskStatus.PENDING);
@@ -638,9 +660,9 @@ public class DesktopBackendService {
         return syncTaskRepository.deleteById(id);
     }
 
-    public List<ExecutionLogEntry> listLogs(Long taskId) {
+    public List<ExecutionLogEntryDO> listLogs(Long taskId) {
         if (taskId == null) {
-            return new ArrayList<ExecutionLogEntry>();
+            return new ArrayList<ExecutionLogEntryDO>();
         }
         return executionLogRepository.findByTaskId(taskId.longValue());
     }
@@ -649,18 +671,18 @@ public class DesktopBackendService {
         appendLog(taskId, logLevel, message);
     }
 
-    public List<ExecutionLogEntry> listAllLogs(List<SyncTask> tasks) {
-        List<ExecutionLogEntry> result = new ArrayList<ExecutionLogEntry>();
-        for (SyncTask task : tasks) {
+    public List<ExecutionLogEntryDO> listAllLogs(List<SyncTaskDO> tasks) {
+        List<ExecutionLogEntryDO> result = new ArrayList<ExecutionLogEntryDO>();
+        for (SyncTaskDO task : tasks) {
             result.addAll(executionLogRepository.findByTaskId(task.getId().longValue()));
         }
         return result;
     }
 
-    public List<ExecutionLogEntry> listTaskScheduleHistory(long taskId) {
-        List<ExecutionLogEntry> entries = executionLogRepository.findByTaskId(taskId);
-        List<ExecutionLogEntry> result = new ArrayList<ExecutionLogEntry>();
-        for (ExecutionLogEntry entry : entries) {
+    public List<ExecutionLogEntryDO> listTaskScheduleHistory(long taskId) {
+        List<ExecutionLogEntryDO> entries = executionLogRepository.findByTaskId(taskId);
+        List<ExecutionLogEntryDO> result = new ArrayList<ExecutionLogEntryDO>();
+        for (ExecutionLogEntryDO entry : entries) {
             String message = entry.getLogMessage();
             if (message != null && message.toLowerCase(Locale.ROOT).contains("scheduled execution")) {
                 result.add(entry);
@@ -669,14 +691,14 @@ public class DesktopBackendService {
         return result;
     }
 
-    public List<SyncTaskTable> listTaskTables(long taskId) throws SQLException {
+    public List<SyncTaskTableDO> listTaskTables(long taskId) throws SQLException {
         if (syncTaskTableRepository == null) {
-            return new ArrayList<SyncTaskTable>();
+            return new ArrayList<SyncTaskTableDO>();
         }
         return syncTaskTableRepository.findByTaskId(taskId);
     }
 
-    public SyncTaskTable saveTaskTable(long taskId, SyncTaskTable taskTable) throws SQLException {
+    public SyncTaskTableDO saveTaskTable(long taskId, SyncTaskTableDO taskTable) throws SQLException {
         if (taskTable == null) {
             throw new IllegalArgumentException("Task table must not be null");
         }
@@ -698,22 +720,22 @@ public class DesktopBackendService {
         return taskTable;
     }
 
-    private void saveTaskTables(SyncTask task) throws SQLException {
+    private void saveTaskTables(SyncTaskDO task) throws SQLException {
         if (syncTaskTableRepository == null || task == null || task.getId() == null) {
             return;
         }
-        List<SyncTaskTable> taskTables = task.getTaskTables();
+        List<SyncTaskTableDO> taskTables = task.getTaskTables();
         if (taskTables == null) {
             return;
         }
-        List<SyncTaskTable> existingTaskTables = syncTaskTableRepository.findByTaskId(task.getId().longValue());
-        for (SyncTaskTable existingTaskTable : existingTaskTables) {
+        List<SyncTaskTableDO> existingTaskTables = syncTaskTableRepository.findByTaskId(task.getId().longValue());
+        for (SyncTaskTableDO existingTaskTable : existingTaskTables) {
             if (existingTaskTable != null && existingTaskTable.getId() != null) {
                 syncTaskTableRepository.deleteById(existingTaskTable.getId().longValue());
             }
         }
         for (int i = 0; i < taskTables.size(); i++) {
-            SyncTaskTable taskTable = taskTables.get(i);
+            SyncTaskTableDO taskTable = taskTables.get(i);
             if (taskTable == null) {
                 continue;
             }
@@ -736,55 +758,55 @@ public class DesktopBackendService {
         return syncTaskTableRepository.deleteById(taskTableId);
     }
 
-    public List<SyncRun> listSyncRuns(Long taskId, int limit) throws SQLException {
+    public List<SyncRunDO> listSyncRuns(Long taskId, int limit) throws SQLException {
         if (syncRunRepository == null) {
-            return new ArrayList<SyncRun>();
+            return new ArrayList<SyncRunDO>();
         }
         int safeLimit = limit <= 0 ? 20 : limit;
         if (taskId == null) {
             return syncRunRepository.findRecent(safeLimit);
         }
-        List<SyncRun> runs = syncRunRepository.findByTaskId(taskId.longValue());
+        List<SyncRunDO> runs = syncRunRepository.findByTaskId(taskId.longValue());
         if (runs.size() <= safeLimit) {
             return runs;
         }
-        return new ArrayList<SyncRun>(runs.subList(0, safeLimit));
+        return new ArrayList<SyncRunDO>(runs.subList(0, safeLimit));
     }
 
-    public Optional<SyncRun> findSyncRunById(long syncRunId) throws SQLException {
+    public Optional<SyncRunDO> findSyncRunById(long syncRunId) throws SQLException {
         if (syncRunRepository == null) {
             return Optional.empty();
         }
         return syncRunRepository.findById(syncRunId);
     }
 
-    public Optional<SyncRun> findSyncRunByRunId(String runId) throws SQLException {
+    public Optional<SyncRunDO> findSyncRunByRunId(String runId) throws SQLException {
         if (syncRunRepository == null) {
             return Optional.empty();
         }
         return syncRunRepository.findByRunId(runId);
     }
 
-    public List<SyncTableRun> listSyncTableRuns(long syncRunId) throws SQLException {
+    public List<SyncTableRunDO> listSyncTableRuns(long syncRunId) throws SQLException {
         if (syncTableRunRepository == null) {
-            return new ArrayList<SyncTableRun>();
+            return new ArrayList<SyncTableRunDO>();
         }
         return syncTableRunRepository.findBySyncRunId(syncRunId);
     }
 
-    public List<SyncRunLogEntry> listSyncRunLogs(Long taskId, String runId, Long syncRunId, Long syncTableRunId,
+    public List<SyncRunLogEntryDO> listSyncRunLogs(Long taskId, String runId, Long syncRunId, Long syncTableRunId,
                                                  String tableName, String logLevel, String keyword,
                                                  Long startTime, Long endTime, int limit) throws SQLException {
         if (syncRunLogRepository == null) {
-            return new ArrayList<SyncRunLogEntry>();
+            return new ArrayList<SyncRunLogEntryDO>();
         }
         int safeLimit = limit <= 0 ? 100 : limit;
-        List<SyncRunLogEntry> candidates = loadSyncRunLogCandidates(taskId, runId, syncRunId, syncTableRunId, safeLimit);
-        List<SyncRunLogEntry> result = new ArrayList<SyncRunLogEntry>();
+        List<SyncRunLogEntryDO> candidates = loadSyncRunLogCandidates(taskId, runId, syncRunId, syncTableRunId, safeLimit);
+        List<SyncRunLogEntryDO> result = new ArrayList<SyncRunLogEntryDO>();
         String normalizedTableName = trimToNull(tableName);
         String normalizedLogLevel = trimToNull(logLevel);
         String normalizedKeyword = trimToNull(keyword);
-        for (SyncRunLogEntry entry : candidates) {
+        for (SyncRunLogEntryDO entry : candidates) {
             if (entry == null) {
                 continue;
             }
@@ -814,42 +836,42 @@ public class DesktopBackendService {
         return result;
     }
 
-    public SyncRunDetailResponse loadSyncRunDetail(long taskId, String runId, int limit) throws SQLException {
-        SyncRun run = findSyncRunByRunId(runId).orElse(null);
+    public SyncRunDetailVO loadSyncRunDetail(long taskId, String runId, int limit) throws SQLException {
+        SyncRunDO run = findSyncRunByRunId(runId).orElse(null);
         if (run == null) {
             throw new SQLException("Sync run not found: " + runId);
         }
         if (run.getTaskId() == null || run.getTaskId().longValue() != taskId) {
             throw new SQLException("Sync run does not belong to task: " + taskId);
         }
-        List<SyncTableRun> tableRuns = listSyncTableRuns(run.getId().longValue());
-        List<SyncRunLogEntry> logs = listSyncRunLogs(Long.valueOf(taskId), runId, run.getId(), null, null, null, null, null, null, limit);
-        SyncRunDetailResponse detail = new SyncRunDetailResponse();
+        List<SyncTableRunDO> tableRuns = listSyncTableRuns(run.getId().longValue());
+        List<SyncRunLogEntryDO> logs = listSyncRunLogs(Long.valueOf(taskId), runId, run.getId(), null, null, null, null, null, null, limit);
+        SyncRunDetailVO detail = new SyncRunDetailVO();
         detail.setRun(run);
         detail.setTableRuns(tableRuns);
         detail.setLogs(logs);
         return detail;
     }
 
-    public List<SqlExecutionLogEntry> listSqlExecutionLogs(int limit) {
+    public List<SqlExecutionLogEntryDO> listSqlExecutionLogs(int limit) {
         return sqlExecutionLogRepository.findRecent(limit);
     }
 
     public int getLogRetentionDays() {
-        AppSettings settings = loadAppSettings();
+        AppSettingsDO settings = loadAppSettings();
         Integer value = settings.getLogRetentionDays();
         return value == null ? DEFAULT_LOG_RETENTION_DAYS : Math.max(1, value.intValue());
     }
 
     public int updateLogRetentionDays(int retentionDays) {
         int safeDays = Math.max(1, retentionDays);
-        AppSettings settings = loadAppSettings();
+        AppSettingsDO settings = loadAppSettings();
         settings.setLogRetentionDays(Integer.valueOf(safeDays));
         saveAppSettings(settings);
         return safeDays;
     }
 
-    public AppSettings loadAppSettings() {
+    public AppSettingsDO loadAppSettings() {
         if (appSettingsRepository == null) {
             return defaultAppSettings();
         }
@@ -859,14 +881,14 @@ public class DesktopBackendService {
         return copySettings(cachedSettings);
     }
 
-    public AppSettingsResponse loadAppSettingsResponse() {
-        AppSettings settings = loadAppSettings();
-        AppBuildInfo buildInfo = AppRuntimeInfo.buildInfo(com.dbsyncstudio.store.sqlite.SqliteSchemaInitializer.currentSchemaVersion(), readGitCommit());
-        AppSettingsResponse response = new AppSettingsResponse();
+    public AppSettingsVO loadAppSettingsResponse() {
+        AppSettingsDO settings = loadAppSettings();
+        AppBuildInfoVO buildInfo = RuntimeUtils.buildInfo(com.dbsyncstudio.store.sqlite.DatabaseSchemaInitializer.currentSchemaVersion(), readGitCommit());
+        AppSettingsVO response = new AppSettingsVO();
         response.setBuildInfo(buildInfo);
         response.setSettings(settings);
-        response.setApplicationDirectory(AppEnvironmentInfo.appDirectory().getAbsolutePath());
-        response.setLogsDirectory(AppEnvironmentInfo.logsDirectory().getAbsolutePath());
+        response.setApplicationDirectory(EnvironmentUtils.appDirectory().getAbsolutePath());
+        response.setLogsDirectory(EnvironmentUtils.logsDirectory().getAbsolutePath());
         response.setDatabaseFilePath(connectionFactory == null || connectionFactory.getDatabaseFile() == null
                 ? null
                 : connectionFactory.getDatabaseFile().getAbsolutePath());
@@ -877,12 +899,12 @@ public class DesktopBackendService {
             response.setDatabaseUserVersion(Integer.valueOf(-1));
             response.setMigrationEntryCount(Integer.valueOf(-1));
         }
-        response.setSchemaVersion(com.dbsyncstudio.store.sqlite.SqliteSchemaInitializer.currentSchemaVersion());
+        response.setSchemaVersion(com.dbsyncstudio.store.sqlite.DatabaseSchemaInitializer.currentSchemaVersion());
         return response;
     }
 
-    public AppSettings saveAppSettings(AppSettings settings) {
-        AppSettings merged = mergeWithDefaults(settings);
+    public AppSettingsDO saveAppSettings(AppSettingsDO settings) {
+        AppSettingsDO merged = mergeWithDefaults(settings);
         if (appSettingsRepository != null) {
             appSettingsRepository.save(merged);
         }
@@ -890,44 +912,44 @@ public class DesktopBackendService {
         return copySettings(merged);
     }
 
-    public AppLicenseInfo loadLicenseInfo() {
-        AppLicenseService service = licenseService();
+    public AppLicenseInfoVO loadLicenseInfo() {
+        LicenseService service = licenseService();
         if (service == null) {
-            return AppLicenseInfo.builder().message("未初始化").build();
+            return AppLicenseInfoVO.builder().message("未初始化").build();
         }
         return service.loadLicenseInfo();
     }
 
-    public AppLicenseInfo activateLicense(String licenseKey) {
-        AppLicenseService service = licenseService();
+    public AppLicenseInfoVO activateLicense(String licenseKey) {
+        LicenseService service = licenseService();
         if (service == null) {
-            return AppLicenseInfo.builder().message("未初始化").build();
+            return AppLicenseInfoVO.builder().message("未初始化").build();
         }
         return service.activateLicense(licenseKey);
     }
 
-    public AppLicenseInfo clearLicense() {
-        AppLicenseService service = licenseService();
+    public AppLicenseInfoVO clearLicense() {
+        LicenseService service = licenseService();
         if (service == null) {
-            return AppLicenseInfo.builder().message("未初始化").build();
+            return AppLicenseInfoVO.builder().message("未初始化").build();
         }
         return service.clearLicense();
     }
 
-    public AppUpdateCheckResult checkForUpdate() {
-        AppLicenseService service = licenseService();
+    public AppUpdateCheckResultVO checkForUpdate() {
+        LicenseService service = licenseService();
         if (service == null) {
-            return AppUpdateCheckResult.builder().message("未初始化").available(false).latest(false).build();
+            return AppUpdateCheckResultVO.builder().message("未初始化").available(false).latest(false).build();
         }
         return service.checkForUpdate();
     }
 
-    public LogCleanupSummary cleanupLogs(Integer retentionDays) throws SQLException {
+    public LogCleanupSummaryVO cleanupLogs(Integer retentionDays) throws SQLException {
         int safeDays = retentionDays == null ? getLogRetentionDays() : Math.max(1, retentionDays.intValue());
         long cutoffTime = System.currentTimeMillis() - (long) safeDays * 24L * 60L * 60L * 1000L;
-        List<SyncTask> tasks = syncTaskRepository.findAll();
+        List<SyncTaskDO> tasks = syncTaskRepository.findAll();
         List<Long> runningTaskIds = new ArrayList<Long>();
-        for (SyncTask task : tasks) {
+        for (SyncTaskDO task : tasks) {
             if (task != null && task.getTaskStatus() == SyncTaskStatus.RUNNING && task.getId() != null) {
                 runningTaskIds.add(task.getId());
             }
@@ -941,7 +963,7 @@ public class DesktopBackendService {
         int syncRunDeleted = syncRunLogRepository == null ? 0 : syncRunLogRepository.deleteOlderThan(cutoffTime, runningTaskIds);
         int sqlDeleted = sqlExecutionLogRepository == null ? 0 : sqlExecutionLogRepository.deleteOlderThan(cutoffTime);
         updateLogRetentionDays(safeDays);
-        return LogCleanupSummary.builder()
+        return LogCleanupSummaryVO.builder()
                 .retentionDays(Integer.valueOf(safeDays))
                 .cutoffTime(Long.valueOf(cutoffTime))
                 .executionLogDeletedCount(Integer.valueOf(executionDeleted))
@@ -950,45 +972,45 @@ public class DesktopBackendService {
                 .build();
     }
 
-    public List<SchemaComparisonHistoryEntry> listSchemaComparisonHistory(int limit) {
+    public List<SchemaComparisonHistoryEntryDO> listSchemaComparisonHistory(int limit) {
         return schemaComparisonHistoryRepository.findRecent(limit);
     }
 
-    public List<AlertRule> listAlertRules() throws SQLException {
+    public List<AlertRuleDO> listAlertRules() throws SQLException {
         if (alertRuleRepository == null) {
-            return new ArrayList<AlertRule>();
+            return new ArrayList<AlertRuleDO>();
         }
         return alertRuleRepository.findAll();
     }
 
-    public List<AlertChannel> listAlertChannels() throws SQLException {
+    public List<AlertChannelDO> listAlertChannels() throws SQLException {
         if (alertChannelRepository == null) {
-            return new ArrayList<AlertChannel>();
+            return new ArrayList<AlertChannelDO>();
         }
-        List<AlertChannel> channels = alertChannelRepository.findAll();
-        List<AlertChannel> result = new ArrayList<AlertChannel>();
-        for (AlertChannel channel : channels) {
+        List<AlertChannelDO> channels = alertChannelRepository.findAll();
+        List<AlertChannelDO> result = new ArrayList<AlertChannelDO>();
+        for (AlertChannelDO channel : channels) {
             result.add(sanitizeAlertChannel(channel));
         }
         return result;
     }
 
-    public List<AlertHistoryEntry> listAlertHistory(int limit) throws SQLException {
+    public List<AlertHistoryEntryDO> listAlertHistory(int limit) throws SQLException {
         return listAlertHistory(null, null, null, null, null, null, limit);
     }
 
-    public List<AlertHistoryEntry> listAlertHistory(Long taskId, String alertType, String sendStatus,
+    public List<AlertHistoryEntryDO> listAlertHistory(Long taskId, String alertType, String sendStatus,
                                                     Long startTime, Long endTime, String keyword, int limit) throws SQLException {
         if (alertHistoryRepository == null) {
-            return new ArrayList<AlertHistoryEntry>();
+            return new ArrayList<AlertHistoryEntryDO>();
         }
-        List<AlertHistoryEntry> history = alertHistoryRepository.findAll();
-        List<AlertHistoryEntry> result = new ArrayList<AlertHistoryEntry>();
+        List<AlertHistoryEntryDO> history = alertHistoryRepository.findAll();
+        List<AlertHistoryEntryDO> result = new ArrayList<AlertHistoryEntryDO>();
         int safeLimit = limit <= 0 ? 50 : limit;
         String normalizedAlertType = trimToNull(alertType);
         String normalizedSendStatus = trimToNull(sendStatus);
         String normalizedKeyword = trimToNull(keyword);
-        for (AlertHistoryEntry entry : history) {
+        for (AlertHistoryEntryDO entry : history) {
             if (entry == null) {
                 continue;
             }
@@ -1023,7 +1045,7 @@ public class DesktopBackendService {
         return result;
     }
 
-    public AlertRule saveAlertRule(AlertRule rule) throws SQLException {
+    public AlertRuleDO saveAlertRule(AlertRuleDO rule) throws SQLException {
         if (rule == null) {
             throw new IllegalArgumentException("Alert rule must not be null");
         }
@@ -1037,7 +1059,7 @@ public class DesktopBackendService {
         return rule;
     }
 
-    public AlertChannel saveAlertChannel(AlertChannel channel) throws SQLException {
+    public AlertChannelDO saveAlertChannel(AlertChannelDO channel) throws SQLException {
         if (channel == null) {
             throw new IllegalArgumentException("Alert channel must not be null");
         }
@@ -1045,7 +1067,7 @@ public class DesktopBackendService {
             channel.setEnabled(Boolean.TRUE);
         }
         if (channel.getId() != null && alertChannelRepository != null) {
-            AlertChannel existing = alertChannelRepository.findById(channel.getId().longValue()).orElse(null);
+            AlertChannelDO existing = alertChannelRepository.findById(channel.getId().longValue()).orElse(null);
             if (existing != null) {
                 mergeAlertChannelSecrets(channel, existing);
             }
@@ -1066,12 +1088,12 @@ public class DesktopBackendService {
         if (alertChannelRepository == null) {
             throw new IllegalStateException("Alert channel repository is not configured");
         }
-        AlertChannel channel = alertChannelRepository.findById(channelId)
+        AlertChannelDO channel = alertChannelRepository.findById(channelId)
                 .orElseThrow(() -> new SQLException("Alert channel not found: " + channelId));
         AlertSendResult result = alertSenderService.send(channel,
                 "DB Sync Studio Alert Test",
                 content == null ? "This is a test alert from DB Sync Studio." : content);
-        AlertHistoryEntry history = AlertHistoryEntry.builder()
+        AlertHistoryEntryDO history = AlertHistoryEntryDO.builder()
                 .alertId("test-" + channelId + "-" + System.currentTimeMillis())
                 .alertType("CHANNEL_TEST")
                 .alertLevel(result.isSuccess() ? "INFO" : "ERROR")
@@ -1089,17 +1111,17 @@ public class DesktopBackendService {
         return result;
     }
 
-    public ValidationResult runValidation(ValidationRequest request) throws SQLException {
+    public ValidationResultVO runValidation(ValidationRequestDTO request) throws SQLException {
         if (request == null) {
             throw new IllegalArgumentException("Validation request must not be null");
         }
         if (request.getTaskId() == null) {
             throw new IllegalArgumentException("Task id must not be null");
         }
-        SyncTask task = loadTask(request.getTaskId().longValue());
-        DatasourceConfig source = loadDatasource(task.getSourceDatasourceId().longValue(), "Source datasource not found: ");
-        DatasourceConfig target = loadDatasource(task.getTargetDatasourceId().longValue(), "Target datasource not found: ");
-        ValidationRequest effective = ValidationRequest.builder()
+        SyncTaskDO task = loadTask(request.getTaskId().longValue());
+        DatasourceConfigDO source = loadDatasource(task.getSourceDatasourceId().longValue(), "Source datasource not found: ");
+        DatasourceConfigDO target = loadDatasource(task.getTargetDatasourceId().longValue(), "Target datasource not found: ");
+        ValidationRequestDTO effective = ValidationRequestDTO.builder()
                 .taskId(task.getId())
                 .runId(trimToNull(request.getRunId()))
                 .sourceDatasource(source)
@@ -1116,9 +1138,12 @@ public class DesktopBackendService {
                 .hashAlgorithm(request.getHashAlgorithm())
                 .hashColumns(request.getHashColumns())
                 .build();
-        ValidationResult result = dataValidationEngine.validate(effective);
+        Long tableTaskId = resolveTransformTableTaskId(task.getId(), task.getSourceSchemaName(), task.getSourceTableName(),
+                task.getTargetSchemaName(), task.getTargetTableName());
+        TransformPlan transformPlan = loadTransformPlan(task.getId(), tableTaskId);
+        ValidationResultVO result = dataValidationEngine.validate(effective, transformPlan);
         validationRepository.saveRun(result.getRun());
-        for (ValidationDifference difference : result.getDifferences()) {
+        for (ValidationDifferenceDO difference : result.getDifferences()) {
             validationRepository.saveDifference(difference);
         }
         if (result.getRun() != null && result.getRun().getInconsistentCount() != null
@@ -1129,7 +1154,7 @@ public class DesktopBackendService {
         return result;
     }
 
-    public void notifyValidationInconsistent(ValidationRun run, String tableName) {
+    public void notifyValidationInconsistent(ValidationRunDO run, String tableName) {
         if (run == null) {
             return;
         }
@@ -1139,7 +1164,7 @@ public class DesktopBackendService {
 
     public void handleScheduledSkip(long taskId, String message) {
         try {
-            SyncTask task = loadTask(taskId);
+            SyncTaskDO task = loadTask(taskId);
             triggerAlert("SCHEDULE_SKIPPED", task.getId(), null, task.getSourceTableName(),
                     "WARNING", message == null ? "Scheduled execution skipped" : message, null, null);
         } catch (Exception ex) {
@@ -1147,34 +1172,34 @@ public class DesktopBackendService {
         }
     }
 
-    public List<ValidationRun> listValidationRuns(Long taskId, int limit) throws SQLException {
+    public List<ValidationRunDO> listValidationRuns(Long taskId, int limit) throws SQLException {
         if (taskId == null) {
             return validationRepository.findRecentRuns(limit);
         }
         return validationRepository.findRecentRunsByTaskId(taskId.longValue(), limit);
     }
 
-    public List<ValidationDifference> listValidationDifferences(long validationRunId) {
+    public List<ValidationDifferenceDO> listValidationDifferences(long validationRunId) {
         return validationRepository.findDifferencesByRunId(validationRunId);
     }
 
-    public RepairResult runRepair(RepairRequest request) throws SQLException {
+    public RepairResultVO runRepair(RepairRequestDTO request) throws SQLException {
         if (request == null) {
             throw new IllegalArgumentException("Repair request must not be null");
         }
         if (request.getValidationRunId() == null) {
             throw new IllegalArgumentException("Validation run id must not be null");
         }
-        ValidationRun validationRun = validationRepository.findRunById(request.getValidationRunId().longValue()).orElse(null);
+        ValidationRunDO validationRun = validationRepository.findRunById(request.getValidationRunId().longValue()).orElse(null);
         if (validationRun == null) {
             throw new SQLException("Validation run not found: " + request.getValidationRunId());
         }
-        SyncTask task = loadTask(validationRun.getTaskId().longValue());
-        DatasourceConfig source = loadDatasource(task.getSourceDatasourceId().longValue(), "Source datasource not found: ");
-        DatasourceConfig target = loadDatasource(task.getTargetDatasourceId().longValue(), "Target datasource not found: ");
-        List<ValidationDifference> allDifferences = validationRepository.findDifferencesByRunId(validationRun.getId().longValue());
-        List<ValidationDifference> selectedDifferences = filterDifferences(allDifferences, request.getValidationDifferenceIds());
-        RepairRequest effective = RepairRequest.builder()
+        SyncTaskDO task = loadTask(validationRun.getTaskId().longValue());
+        DatasourceConfigDO source = loadDatasource(task.getSourceDatasourceId().longValue(), "Source datasource not found: ");
+        DatasourceConfigDO target = loadDatasource(task.getTargetDatasourceId().longValue(), "Target datasource not found: ");
+        List<ValidationDifferenceDO> allDifferences = validationRepository.findDifferencesByRunId(validationRun.getId().longValue());
+        List<ValidationDifferenceDO> selectedDifferences = filterDifferences(allDifferences, request.getValidationDifferenceIds());
+        RepairRequestDTO effective = RepairRequestDTO.builder()
                 .taskId(task.getId())
                 .validationRunId(validationRun.getId())
                 .runId(trimToNull(request.getRunId()))
@@ -1190,10 +1215,13 @@ public class DesktopBackendService {
                 .execute(request.isExecute())
                 .confirmDelete(request.isConfirmDelete())
                 .build();
-        RepairResult result = dataRepairEngine.repair(effective, selectedDifferences);
+        Long tableTaskId = resolveTransformTableTaskId(task.getId(), task.getSourceSchemaName(), task.getSourceTableName(),
+                task.getTargetSchemaName(), task.getTargetTableName());
+        TransformPlan transformPlan = loadTransformPlan(task.getId(), tableTaskId);
+        RepairResultVO result = dataRepairEngine.repair(effective, selectedDifferences, transformPlan);
         long repairRunId = repairRepository.saveRun(result.getRun());
-        List<RepairDetail> persistedDetails = new ArrayList<RepairDetail>();
-        for (RepairDetail detail : result.getDetails()) {
+        List<RepairDetailDO> persistedDetails = new ArrayList<RepairDetailDO>();
+        for (RepairDetailDO detail : result.getDetails()) {
             detail.setRepairRunId(Long.valueOf(repairRunId));
             repairRepository.saveDetail(detail);
             persistedDetails.add(detail);
@@ -1207,7 +1235,7 @@ public class DesktopBackendService {
         return result;
     }
 
-    public void notifyRepairFailed(RepairRun run, String tableName) {
+    public void notifyRepairFailed(RepairRunDO run, String tableName) {
         if (run == null) {
             return;
         }
@@ -1215,26 +1243,26 @@ public class DesktopBackendService {
                 "ERROR", "Repair failed", null, null);
     }
 
-    public List<RepairRun> listRepairRuns(Long validationRunId, int limit) {
+    public List<RepairRunDO> listRepairRuns(Long validationRunId, int limit) {
         if (validationRunId == null) {
             return repairRepository.findRecentRuns(limit);
         }
         return repairRepository.findRecentRunsByValidationRunId(validationRunId.longValue(), limit);
     }
 
-    public List<RepairDetail> listRepairDetails(long repairRunId) {
+    public List<RepairDetailDO> listRepairDetails(long repairRunId) {
         return repairRepository.findDetailsByRunId(repairRunId);
     }
 
-    private List<ValidationDifference> filterDifferences(List<ValidationDifference> differences, List<Long> selectedIds) {
+    private List<ValidationDifferenceDO> filterDifferences(List<ValidationDifferenceDO> differences, List<Long> selectedIds) {
         if (differences == null || differences.isEmpty()) {
-            return new ArrayList<ValidationDifference>();
+            return new ArrayList<ValidationDifferenceDO>();
         }
         if (selectedIds == null || selectedIds.isEmpty()) {
-            return new ArrayList<ValidationDifference>(differences);
+            return new ArrayList<ValidationDifferenceDO>(differences);
         }
-        List<ValidationDifference> result = new ArrayList<ValidationDifference>();
-        for (ValidationDifference difference : differences) {
+        List<ValidationDifferenceDO> result = new ArrayList<ValidationDifferenceDO>();
+        for (ValidationDifferenceDO difference : differences) {
             if (difference != null && difference.getId() != null && selectedIds.contains(difference.getId())) {
                 result.add(difference);
             }
@@ -1242,15 +1270,44 @@ public class DesktopBackendService {
         return result;
     }
 
-    private List<String> resolvePrimaryKeyColumns(DatasourceConfig datasource, String schemaName, String tableName) throws SQLException {
-        List<SchemaMetadata> schemas = metadataScanner.scan(datasource);
-        TableMetadata tableMetadata = findTableMetadata(schemas, schemaName, tableName);
+    private Long resolveTransformTableTaskId(Long taskId, String sourceSchemaName, String sourceTableName,
+                                             String targetSchemaName, String targetTableName) throws SQLException {
+        if (syncTaskTableRepository == null || taskId == null) {
+            return null;
+        }
+        List<SyncTaskTableDO> taskTables = syncTaskTableRepository.findByTaskId(taskId.longValue());
+        for (SyncTaskTableDO taskTable : taskTables) {
+            if (taskTable == null) {
+                continue;
+            }
+            if (matchesTableName(taskTable.getSourceSchemaName(), sourceSchemaName)
+                    && matchesTableName(taskTable.getSourceTableName(), sourceTableName)
+                    && matchesTableName(taskTable.getTargetSchemaName(), targetSchemaName)
+                    && matchesTableName(taskTable.getTargetTableName(), targetTableName)) {
+                return taskTable.getId();
+            }
+        }
+        return null;
+    }
+
+    private boolean matchesTableName(String left, String right) {
+        String normalizedLeft = trimToNull(left);
+        String normalizedRight = trimToNull(right);
+        if (normalizedLeft == null || normalizedRight == null) {
+            return normalizedLeft == null && normalizedRight == null;
+        }
+        return normalizedLeft.equalsIgnoreCase(normalizedRight);
+    }
+
+    private List<String> resolvePrimaryKeyColumns(DatasourceConfigDO datasource, String schemaName, String tableName) throws SQLException {
+        List<SchemaMetadataDO> schemas = metadataScanner.scan(datasource);
+        TableMetadataDO tableMetadata = findTableMetadata(schemas, schemaName, tableName);
         if (tableMetadata == null) {
             return new ArrayList<String>();
         }
         List<String> columns = new ArrayList<String>();
         if (tableMetadata.getColumns() != null) {
-            for (ColumnMetadata column : tableMetadata.getColumns()) {
+            for (ColumnMetadataDO column : tableMetadata.getColumns()) {
                 if (column != null && column.isPrimaryKey() && column.getName() != null) {
                     columns.add(column.getName());
                 }
@@ -1260,12 +1317,12 @@ public class DesktopBackendService {
     }
 
     private void executeTask(long taskId, TaskExecutionState state) {
-        SyncTask task = null;
+        SyncTaskDO task = null;
         boolean preserveBatchState = false;
         try {
             task = loadTask(taskId);
-            DatasourceConfig source = loadDatasource(task.getSourceDatasourceId().longValue(), "Source datasource not found: ");
-            DatasourceConfig target = loadDatasource(task.getTargetDatasourceId().longValue(), "Target datasource not found: ");
+            DatasourceConfigDO source = loadDatasource(task.getSourceDatasourceId().longValue(), "Source datasource not found: ");
+            DatasourceConfigDO target = loadDatasource(task.getTargetDatasourceId().longValue(), "Target datasource not found: ");
             task.setTaskStatus(SyncTaskStatus.RUNNING);
             task.setStartedAt(task.getStartedAt() == null ? Long.valueOf(System.currentTimeMillis()) : task.getStartedAt());
             task.setEndedAt(null);
@@ -1273,14 +1330,14 @@ public class DesktopBackendService {
             syncTaskRepository.save(task);
 
             SyncTaskProgressListener listener = state.createListener(task);
-            TaskBatchRunRequest batchRunRequest = state.getBatchRunRequest();
+            TaskBatchRunDTO batchRunRequest = state.getBatchRunRequest();
             if (batchRunRequest != null) {
                 runBatchTask(task, source, target, listener, state, batchRunRequest);
             } else if (task.getSyncMode() == SyncMode.INCREMENTAL) {
-                IncrementalSyncResult result = incrementalSync(task, source, target, listener);
+                IncrementalSyncResultVO result = incrementalSync(task, source, target, listener);
                 appendLog(taskId, "INFO", "Incremental sync inserted " + result.getInsertedRowCount() + " rows");
             } else {
-                FullSyncResult result = fullSync(task, source, target, listener);
+                FullSyncResultVO result = fullSync(task, source, target, listener);
                 appendLog(taskId, "INFO", "Full sync inserted " + result.getInsertedRowCount() + " rows");
             }
 
@@ -1380,19 +1437,22 @@ public class DesktopBackendService {
         }
     }
 
-    private FullSyncResult fullSync(SyncTask task, DatasourceConfig source, DatasourceConfig target,
+    private FullSyncResultVO fullSync(SyncTaskDO task, DatasourceConfigDO source, DatasourceConfigDO target,
                                     SyncTaskProgressListener listener) throws SQLException {
         return fullSync(task, source, target, task.getSourceSchemaName(), task.getSourceTableName(),
                 task.getTargetSchemaName(), task.getTargetTableName(),
-                "task-" + task.getId() + "-full", resolveFullCheckpointValue("task-" + task.getId() + "-full"), listener, 500);
+                "task-" + task.getId() + "-full", resolveFullCheckpointValue("task-" + task.getId() + "-full"), listener, 500, null);
     }
 
-    private FullSyncResult fullSync(SyncTask task, DatasourceConfig source, DatasourceConfig target,
+    private FullSyncResultVO fullSync(SyncTaskDO task, DatasourceConfigDO source, DatasourceConfigDO target,
                                     String sourceSchemaName, String sourceTableName,
                                     String targetSchemaName, String targetTableName,
                                     String checkpointKey, String checkpointValue,
-                                    SyncTaskProgressListener listener, int batchSize) throws SQLException {
-        FullSyncRequest request = FullSyncRequest.builder()
+                                    SyncTaskProgressListener listener, int batchSize, Long tableTaskId) throws SQLException {
+        FullSyncRequestDTO request = FullSyncRequestDTO.builder()
+                .taskId(task.getId())
+                .tableTaskId(tableTaskId)
+                .runId(checkpointKey)
                 .sourceDatasource(source)
                 .targetDatasource(target)
                 .sourceSchemaName(sourceSchemaName)
@@ -1405,20 +1465,24 @@ public class DesktopBackendService {
                 .batchSize(batchSize <= 0 ? 500 : batchSize)
                 .replaceTargetData(true)
                 .build();
-        return fullSyncEngine.sync(request, listener);
+        TransformPlan transformPlan = loadTransformPlan(task.getId(), tableTaskId);
+        if (transformPlan == null || transformPlan.isEmpty()) {
+            return fullSyncEngine.sync(request, listener);
+        }
+        return fullSyncEngine.sync(request, listener, transformPlan);
     }
 
-    private IncrementalSyncResult incrementalSync(SyncTask task, DatasourceConfig source, DatasourceConfig target,
+    private IncrementalSyncResultVO incrementalSync(SyncTaskDO task, DatasourceConfigDO source, DatasourceConfigDO target,
                                                    SyncTaskProgressListener listener) throws SQLException {
         return incrementalSync(task, source, target, task.getSourceSchemaName(), task.getSourceTableName(),
                 task.getTargetSchemaName(), task.getTargetTableName(), "task-" + task.getId(),
                 resolveCheckpointValue(task.getId()), listener, task.getIncrementalMode(),
                 resolveIncrementalColumnName(task, task.getIncrementalMode() == null ? IncrementalSyncMode.TIMESTAMP : task.getIncrementalMode()),
                 trimToNull(task.getIncrementalTieBreakerColumnName()),
-                trimToNull(task.getIncrementalCompositeColumnName()), 500);
+                trimToNull(task.getIncrementalCompositeColumnName()), 500, null);
     }
 
-    private IncrementalSyncResult incrementalSync(SyncTask task, DatasourceConfig source, DatasourceConfig target,
+    private IncrementalSyncResultVO incrementalSync(SyncTaskDO task, DatasourceConfigDO source, DatasourceConfigDO target,
                                                    String sourceSchemaName, String sourceTableName,
                                                    String targetSchemaName, String targetTableName,
                                                    String checkpointKey, String checkpointValue,
@@ -1427,9 +1491,11 @@ public class DesktopBackendService {
                                                    String incrementalColumnName,
                                                    String incrementalTieBreakerColumnName,
                                                    String incrementalCompositeColumnName,
-                                                   int batchSize) throws SQLException {
-        IncrementalSyncRequest request = IncrementalSyncRequest.builder()
+                                                   int batchSize, Long tableTaskId) throws SQLException {
+        IncrementalSyncRequestDTO request = IncrementalSyncRequestDTO.builder()
                 .taskId(task.getId())
+                .tableTaskId(tableTaskId)
+                .runId(checkpointKey)
                 .sourceDatasource(source)
                 .targetDatasource(target)
                 .sourceSchemaName(sourceSchemaName)
@@ -1447,15 +1513,19 @@ public class DesktopBackendService {
                 .batchSize(batchSize <= 0 ? 500 : batchSize)
                 .replaceTargetData(false)
                 .build();
-        return incrementalSyncEngine.sync(request, listener);
+        TransformPlan transformPlan = loadTransformPlan(task.getId(), tableTaskId);
+        if (transformPlan == null || transformPlan.isEmpty()) {
+            return incrementalSyncEngine.sync(request, listener);
+        }
+        return incrementalSyncEngine.sync(request, listener, transformPlan);
     }
 
-    private void runBatchTask(SyncTask task, DatasourceConfig source, DatasourceConfig target,
+    private void runBatchTask(SyncTaskDO task, DatasourceConfigDO source, DatasourceConfigDO target,
                               SyncTaskProgressListener listener, TaskExecutionState state,
-                              TaskBatchRunRequest batchRunRequest) throws SQLException {
-        List<TaskBatchTableRequest> tables = batchRunRequest.getTables();
+                              TaskBatchRunDTO batchRunRequest) throws SQLException {
+        List<TaskBatchTableDTO> tables = batchRunRequest.getTables();
         String batchRunId = state.getBatchRunId();
-        SyncRun syncRun = createSyncRun(task, batchRunId, tables.size());
+        SyncRunDO syncRun = createSyncRun(task, batchRunId, tables.size());
         long syncRunId = syncRun == null || syncRun.getId() == null ? -1L : syncRun.getId().longValue();
         int concurrency = Math.max(1, batchRunRequest.getMaxConcurrency() == null ? 3 : batchRunRequest.getMaxConcurrency().intValue());
         ExecutorService batchExecutor = Executors.newFixedThreadPool(concurrency);
@@ -1465,7 +1535,7 @@ public class DesktopBackendService {
         try {
             for (int i = 0; i < tables.size(); i++) {
                 final int tableIndex = i;
-                final TaskBatchTableRequest tableRequest = tables.get(i);
+                final TaskBatchTableDTO tableRequest = tables.get(i);
                 futures.add(completionService.submit(new Callable<BatchTableExecutionResult>() {
                     @Override
                     public BatchTableExecutionResult call() throws Exception {
@@ -1554,33 +1624,34 @@ public class DesktopBackendService {
         }
     }
 
-    private BatchTableExecutionResult executeBatchTable(SyncTask task, DatasourceConfig source, DatasourceConfig target,
+    private BatchTableExecutionResult executeBatchTable(SyncTaskDO task, DatasourceConfigDO source, DatasourceConfigDO target,
                                                         SyncTaskProgressListener listener, long syncRunId, String batchRunId,
-                                                        TaskBatchTableRequest tableRequest, int tableIndex) throws SQLException {
+                                                        TaskBatchTableDTO tableRequest, int tableIndex) throws SQLException {
         String sourceSchemaName = trimToNull(tableRequest.getSourceSchemaName());
         String targetSchemaName = trimToNull(tableRequest.getTargetSchemaName());
         String sourceTableName = tableRequest.getSourceTableName();
         String targetTableName = tableRequest.getTargetTableName();
         String tableRunCheckpointKey = batchRunId + "-" + (tableIndex + 1);
-        SyncTaskTable taskTable = resolveTaskTable(task.getId().longValue(), tableRequest, tableIndex);
-        SyncTableRun tableRun = createSyncTableRun(syncRunId, task, taskTable, tableRequest, tableIndex, batchRunId);
+        SyncTaskTableDO taskTable = resolveTaskTable(task.getId().longValue(), tableRequest, tableIndex);
+        SyncTableRunDO tableRun = createSyncTableRun(syncRunId, task, taskTable, tableRequest, tableIndex, batchRunId);
         SyncMode effectiveSyncMode = resolveEffectiveSyncMode(task, taskTable, tableRequest);
         IncrementalSyncMode effectiveIncrementalMode = resolveEffectiveIncrementalMode(task, taskTable, tableRequest);
         String effectiveIncrementalColumnName = resolveEffectiveIncrementalColumnName(task, taskTable, tableRequest, effectiveIncrementalMode);
         String effectiveIncrementalTieBreakerColumnName = resolveEffectiveIncrementalTieBreakerColumnName(task, taskTable, tableRequest);
         String effectiveIncrementalCompositeColumnName = resolveEffectiveIncrementalCompositeColumnName(task, taskTable, tableRequest);
         int effectiveBatchSize = resolveEffectiveBatchSize(taskTable, tableRequest);
+        Long tableTaskId = taskTable == null ? null : taskTable.getId();
         appendRunLog(Long.valueOf(syncRunId), tableRun == null ? null : tableRun.getId(), task.getId().longValue(), batchRunId,
                 sourceTableName, "INFO", "Batch sync started for " + sourceTableName + " -> " + targetTableName);
         try {
             if (SyncMode.INCREMENTAL == effectiveSyncMode) {
                 Long batchTaskId = Long.valueOf(task.getId().longValue() * 1000L + tableIndex + 1L);
-                IncrementalSyncResult result = incrementalSync(task, source, target,
+                IncrementalSyncResultVO result = incrementalSync(task, source, target,
                         sourceSchemaName, sourceTableName, targetSchemaName, targetTableName,
                         tableRunCheckpointKey, resolveCheckpointValue(batchTaskId), listener,
                         effectiveIncrementalMode, effectiveIncrementalColumnName,
                         effectiveIncrementalTieBreakerColumnName, effectiveIncrementalCompositeColumnName,
-                        effectiveBatchSize);
+                        effectiveBatchSize, tableTaskId);
                 updateSyncTableRunSuccess(tableRun, result, tableRunCheckpointKey);
                 appendRunLog(Long.valueOf(syncRunId), tableRun == null ? null : tableRun.getId(), task.getId().longValue(), batchRunId,
                         sourceTableName, "INFO", "Batch incremental sync inserted " + result.getInsertedRowCount()
@@ -1589,9 +1660,9 @@ public class DesktopBackendService {
                 return BatchTableExecutionResult.success(tableIndex, tableRun, result.getSourceRowCount(),
                         result.getInsertedRowCount(), result.getInsertedRowCount(), 0L);
             }
-            FullSyncResult result = fullSync(task, source, target,
+            FullSyncResultVO result = fullSync(task, source, target,
                     sourceSchemaName, sourceTableName, targetSchemaName, targetTableName,
-                    tableRunCheckpointKey, resolveFullCheckpointValue(tableRunCheckpointKey), listener, effectiveBatchSize);
+                    tableRunCheckpointKey, resolveFullCheckpointValue(tableRunCheckpointKey), listener, effectiveBatchSize, tableTaskId);
             updateSyncTableRunSuccess(tableRun, result, tableRunCheckpointKey);
             appendRunLog(Long.valueOf(syncRunId), tableRun == null ? null : tableRun.getId(), task.getId().longValue(), batchRunId,
                     sourceTableName, "INFO", "Batch full sync inserted " + result.getInsertedRowCount()
@@ -1626,12 +1697,12 @@ public class DesktopBackendService {
         }
     }
 
-    private SyncTaskTable resolveTaskTable(long taskId, TaskBatchTableRequest tableRequest, int tableOrder) throws SQLException {
+    private SyncTaskTableDO resolveTaskTable(long taskId, TaskBatchTableDTO tableRequest, int tableOrder) throws SQLException {
         if (syncTaskTableRepository == null) {
             return null;
         }
-        List<SyncTaskTable> taskTables = syncTaskTableRepository.findByTaskId(taskId);
-        for (SyncTaskTable taskTable : taskTables) {
+        List<SyncTaskTableDO> taskTables = syncTaskTableRepository.findByTaskId(taskId);
+        for (SyncTaskTableDO taskTable : taskTables) {
             if (taskTable == null) {
                 continue;
             }
@@ -1653,11 +1724,11 @@ public class DesktopBackendService {
         return null;
     }
 
-    private SyncRun createSyncRun(SyncTask task, String runId, int totalTableCount) throws SQLException {
+    private SyncRunDO createSyncRun(SyncTaskDO task, String runId, int totalTableCount) throws SQLException {
         if (syncRunRepository == null) {
             return null;
         }
-        SyncRun run = new SyncRun();
+        SyncRunDO run = new SyncRunDO();
         run.setTaskId(task.getId());
         run.setRunId(runId);
         run.setSyncMode(task.getSyncMode() == null ? SyncMode.MANUAL.name() : task.getSyncMode().name());
@@ -1675,12 +1746,12 @@ public class DesktopBackendService {
         return run;
     }
 
-    private SyncTableRun createSyncTableRun(long syncRunId, SyncTask task, SyncTaskTable taskTable,
-                                            TaskBatchTableRequest tableRequest, int tableOrder, String runId) throws SQLException {
+    private SyncTableRunDO createSyncTableRun(long syncRunId, SyncTaskDO task, SyncTaskTableDO taskTable,
+                                            TaskBatchTableDTO tableRequest, int tableOrder, String runId) throws SQLException {
         if (syncTableRunRepository == null) {
             return null;
         }
-        SyncTableRun tableRun = SyncTableRun.builder()
+        SyncTableRunDO tableRun = SyncTableRunDO.builder()
                 .syncRunId(Long.valueOf(syncRunId))
                 .taskId(task.getId())
                 .runId(runId)
@@ -1698,7 +1769,7 @@ public class DesktopBackendService {
         return tableRun;
     }
 
-    private void updateSyncTableRunSuccess(SyncTableRun tableRun, FullSyncResult result, String checkpointValue) throws SQLException {
+    private void updateSyncTableRunSuccess(SyncTableRunDO tableRun, FullSyncResultVO result, String checkpointValue) throws SQLException {
         if (tableRun == null || syncTableRunRepository == null) {
             return;
         }
@@ -1718,7 +1789,7 @@ public class DesktopBackendService {
         captureTableRunMetric(tableRun, Integer.valueOf(1), Integer.valueOf(0), checkpointValue, null);
     }
 
-    private void updateSyncTableRunSuccess(SyncTableRun tableRun, IncrementalSyncResult result, String checkpointValue) throws SQLException {
+    private void updateSyncTableRunSuccess(SyncTableRunDO tableRun, IncrementalSyncResultVO result, String checkpointValue) throws SQLException {
         if (tableRun == null || syncTableRunRepository == null) {
             return;
         }
@@ -1738,7 +1809,7 @@ public class DesktopBackendService {
         captureTableRunMetric(tableRun, Integer.valueOf(1), Integer.valueOf(0), checkpointValue, null);
     }
 
-    private void markSyncTableRunStatus(SyncTableRun tableRun, String status, String errorMessage, String progressMessage) throws SQLException {
+    private void markSyncTableRunStatus(SyncTableRunDO tableRun, String status, String errorMessage, String progressMessage) throws SQLException {
         if (tableRun == null || syncTableRunRepository == null) {
             return;
         }
@@ -1757,7 +1828,7 @@ public class DesktopBackendService {
         captureTableRunMetric(tableRun, Integer.valueOf(0), Integer.valueOf(0), tableRun.getCheckpointValue(), errorMessage);
     }
 
-    private void applySyncRunProgress(SyncRun syncRun, long sourceRowCount, long syncedRowCount, long successRowCount, long failedRowCount) throws SQLException {
+    private void applySyncRunProgress(SyncRunDO syncRun, long sourceRowCount, long syncedRowCount, long successRowCount, long failedRowCount) throws SQLException {
         if (syncRun == null || syncRunRepository == null) {
             return;
         }
@@ -1770,7 +1841,7 @@ public class DesktopBackendService {
         syncRunRepository.save(syncRun);
     }
 
-    private void markSyncRunStatus(SyncRun syncRun, String status, String message) throws SQLException {
+    private void markSyncRunStatus(SyncRunDO syncRun, String status, String message) throws SQLException {
         if (syncRun == null || syncRunRepository == null) {
             return;
         }
@@ -1789,7 +1860,7 @@ public class DesktopBackendService {
         if (syncRunLogRepository == null) {
             return;
         }
-        SyncRunLogEntry entry = new SyncRunLogEntry();
+        SyncRunLogEntryDO entry = new SyncRunLogEntryDO();
         entry.setTaskId(Long.valueOf(taskId));
         entry.setSyncRunId(syncRunId);
         entry.setSyncTableRunId(syncTableRunId);
@@ -1817,11 +1888,11 @@ public class DesktopBackendService {
         return "SUCCESS";
     }
 
-    private void updateBatchTaskStatus(SyncTask task, String finalStatus, SyncRun syncRun) throws SQLException {
+    private void updateBatchTaskStatus(SyncTaskDO task, String finalStatus, SyncRunDO syncRun) throws SQLException {
         if (task == null) {
             return;
         }
-        SyncTask currentTask = loadTask(task.getId().longValue());
+        SyncTaskDO currentTask = loadTask(task.getId().longValue());
         if ("PARTIAL_SUCCESS".equals(finalStatus)) {
             currentTask.setTaskStatus(SyncTaskStatus.PARTIAL_SUCCESS);
             currentTask.setProgressMessage("Task partially successful");
@@ -1852,7 +1923,7 @@ public class DesktopBackendService {
         syncTaskRepository.save(currentTask);
     }
 
-    private SyncMode resolveEffectiveSyncMode(SyncTask task, SyncTaskTable taskTable, TaskBatchTableRequest tableRequest) {
+    private SyncMode resolveEffectiveSyncMode(SyncTaskDO task, SyncTaskTableDO taskTable, TaskBatchTableDTO tableRequest) {
         String value = trimToNull(tableRequest == null ? null : tableRequest.getSyncMode());
         if (value == null) {
             value = trimToNull(taskTable == null ? null : taskTable.getSyncMode());
@@ -1863,7 +1934,7 @@ public class DesktopBackendService {
         return SyncMode.valueOf(value);
     }
 
-    private IncrementalSyncMode resolveEffectiveIncrementalMode(SyncTask task, SyncTaskTable taskTable, TaskBatchTableRequest tableRequest) {
+    private IncrementalSyncMode resolveEffectiveIncrementalMode(SyncTaskDO task, SyncTaskTableDO taskTable, TaskBatchTableDTO tableRequest) {
         String value = trimToNull(tableRequest == null ? null : tableRequest.getIncrementalMode());
         if (value == null) {
             value = trimToNull(taskTable == null ? null : taskTable.getIncrementalMode());
@@ -1874,7 +1945,7 @@ public class DesktopBackendService {
         return IncrementalSyncMode.valueOf(value);
     }
 
-    private String resolveEffectiveIncrementalColumnName(SyncTask task, SyncTaskTable taskTable, TaskBatchTableRequest tableRequest,
+    private String resolveEffectiveIncrementalColumnName(SyncTaskDO task, SyncTaskTableDO taskTable, TaskBatchTableDTO tableRequest,
                                                          IncrementalSyncMode incrementalMode) {
         String value = trimToNull(tableRequest == null ? null : tableRequest.getIncrementalColumnName());
         if (value == null) {
@@ -1889,7 +1960,7 @@ public class DesktopBackendService {
         return value == null ? "updated_at" : value;
     }
 
-    private String resolveEffectiveIncrementalTieBreakerColumnName(SyncTask task, SyncTaskTable taskTable, TaskBatchTableRequest tableRequest) {
+    private String resolveEffectiveIncrementalTieBreakerColumnName(SyncTaskDO task, SyncTaskTableDO taskTable, TaskBatchTableDTO tableRequest) {
         String value = trimToNull(tableRequest == null ? null : tableRequest.getIncrementalTieBreakerColumnName());
         if (value == null) {
             value = trimToNull(taskTable == null ? null : taskTable.getIncrementalTieBreakerColumnName());
@@ -1900,7 +1971,7 @@ public class DesktopBackendService {
         return value;
     }
 
-    private String resolveEffectiveIncrementalCompositeColumnName(SyncTask task, SyncTaskTable taskTable, TaskBatchTableRequest tableRequest) {
+    private String resolveEffectiveIncrementalCompositeColumnName(SyncTaskDO task, SyncTaskTableDO taskTable, TaskBatchTableDTO tableRequest) {
         String value = trimToNull(tableRequest == null ? null : tableRequest.getIncrementalCompositeColumnName());
         if (value == null) {
             value = trimToNull(taskTable == null ? null : taskTable.getIncrementalCompositeColumnName());
@@ -1911,7 +1982,7 @@ public class DesktopBackendService {
         return value;
     }
 
-    private int resolveEffectiveBatchSize(SyncTaskTable taskTable, TaskBatchTableRequest tableRequest) {
+    private int resolveEffectiveBatchSize(SyncTaskTableDO taskTable, TaskBatchTableDTO tableRequest) {
         Integer value = tableRequest == null ? null : tableRequest.getBatchSize();
         if (value == null || value.intValue() <= 0) {
             value = taskTable == null ? null : taskTable.getBatchSize();
@@ -1924,14 +1995,14 @@ public class DesktopBackendService {
 
     private static final class BatchTableExecutionResult {
         private final int tableIndex;
-        private final SyncTableRun tableRun;
+        private final SyncTableRunDO tableRun;
         private final String tableStatus;
         private final long sourceRowCount;
         private final long syncedRowCount;
         private final long successRowCount;
         private final long failedRowCount;
 
-        private BatchTableExecutionResult(int tableIndex, SyncTableRun tableRun, String tableStatus,
+        private BatchTableExecutionResult(int tableIndex, SyncTableRunDO tableRun, String tableStatus,
                                           long sourceRowCount, long syncedRowCount, long successRowCount, long failedRowCount) {
             this.tableIndex = tableIndex;
             this.tableRun = tableRun;
@@ -1942,7 +2013,7 @@ public class DesktopBackendService {
             this.failedRowCount = failedRowCount;
         }
 
-        private static BatchTableExecutionResult success(int tableIndex, SyncTableRun tableRun,
+        private static BatchTableExecutionResult success(int tableIndex, SyncTableRunDO tableRun,
                                                          long sourceRowCount, long syncedRowCount,
                                                          long successRowCount, long failedRowCount) {
             return new BatchTableExecutionResult(tableIndex, tableRun, "SUCCESS",
@@ -1950,9 +2021,9 @@ public class DesktopBackendService {
         }
     }
 
-    private List<SyncRunLogEntry> loadSyncRunLogCandidates(Long taskId, String runId, Long syncRunId, Long syncTableRunId, int limit) throws SQLException {
+    private List<SyncRunLogEntryDO> loadSyncRunLogCandidates(Long taskId, String runId, Long syncRunId, Long syncTableRunId, int limit) throws SQLException {
         if (syncRunLogRepository == null) {
-            return new ArrayList<SyncRunLogEntry>();
+            return new ArrayList<SyncRunLogEntryDO>();
         }
         if (syncTableRunId != null) {
             return syncRunLogRepository.findBySyncTableRunId(syncTableRunId.longValue());
@@ -1969,7 +2040,7 @@ public class DesktopBackendService {
         return syncRunLogRepository.findRecent(limit);
     }
 
-    private boolean matchesSyncRunLogIdentifiers(SyncRunLogEntry entry, Long taskId, String runId, Long syncRunId, Long syncTableRunId) {
+    private boolean matchesSyncRunLogIdentifiers(SyncRunLogEntryDO entry, Long taskId, String runId, Long syncRunId, Long syncTableRunId) {
         if (entry == null) {
             return false;
         }
@@ -1992,7 +2063,7 @@ public class DesktopBackendService {
         if (taskId == null) {
             return null;
         }
-        Optional<com.dbsyncstudio.model.sync.IncrementalSyncCheckpointEntry> checkpoint = incrementalCheckpointRepository.findByTaskId(taskId.longValue());
+        Optional<com.dbsyncstudio.model.sync.entity.IncrementalSyncCheckpointEntryDO> checkpoint = incrementalCheckpointRepository.findByTaskId(taskId.longValue());
         if (!checkpoint.isPresent()) {
             return null;
         }
@@ -2000,14 +2071,14 @@ public class DesktopBackendService {
     }
 
     private String resolveFullCheckpointValue(String checkpointKey) {
-        Optional<com.dbsyncstudio.model.sync.SyncCheckpoint> checkpoint = checkpointRepository.findByKey(checkpointKey);
+        Optional<com.dbsyncstudio.model.sync.entity.SyncCheckpointDO> checkpoint = checkpointRepository.findByKey(checkpointKey);
         if (!checkpoint.isPresent()) {
             return null;
         }
         return checkpoint.get().getCheckpointValue();
     }
 
-    private String resolveIncrementalColumnName(SyncTask task, IncrementalSyncMode incrementalMode) {
+    private String resolveIncrementalColumnName(SyncTaskDO task, IncrementalSyncMode incrementalMode) {
         String configured = trimToNull(task.getIncrementalColumnName());
         if (configured != null) {
             return configured;
@@ -2026,12 +2097,12 @@ public class DesktopBackendService {
         return trimmed.length() == 0 ? null : trimmed;
     }
 
-    private SyncCheckpoint loadOrCreateCheckpoint(String checkpointKey, String defaultValue) {
-        Optional<SyncCheckpoint> checkpoint = checkpointRepository.findByKey(checkpointKey);
+    private SyncCheckpointDO loadOrCreateCheckpoint(String checkpointKey, String defaultValue) {
+        Optional<SyncCheckpointDO> checkpoint = checkpointRepository.findByKey(checkpointKey);
         if (checkpoint.isPresent()) {
             return checkpoint.get();
         }
-        SyncCheckpoint created = new SyncCheckpoint();
+        SyncCheckpointDO created = new SyncCheckpointDO();
         created.setCheckpointKey(checkpointKey);
         created.setCheckpointValue(defaultValue);
         created.setUpdatedAt(Long.valueOf(System.currentTimeMillis()));
@@ -2039,7 +2110,7 @@ public class DesktopBackendService {
         return created;
     }
 
-    private void setNextScheduleRunAt(SyncTask task, long baseTime) {
+    private void setNextScheduleRunAt(SyncTaskDO task, long baseTime) {
         long nextRunAt = TaskScheduleCalculator.computeNextRunAt(task, baseTime);
         task.setScheduleNextRunAt(nextRunAt > 0L ? Long.valueOf(nextRunAt) : null);
     }
@@ -2095,7 +2166,7 @@ public class DesktopBackendService {
         private final long taskId;
         private volatile boolean pauseRequested;
         private volatile boolean stopRequested;
-        private volatile TaskBatchRunRequest batchRunRequest;
+        private volatile TaskBatchRunDTO batchRunRequest;
         private volatile String batchRunId;
         private volatile int batchTableIndex;
 
@@ -2116,12 +2187,12 @@ public class DesktopBackendService {
             this.stopRequested = false;
         }
 
-        private void setBatchRunRequest(TaskBatchRunRequest batchRunRequest) {
+        private void setBatchRunRequest(TaskBatchRunDTO batchRunRequest) {
             this.batchRunRequest = batchRunRequest;
             this.batchTableIndex = 0;
         }
 
-        private TaskBatchRunRequest getBatchRunRequest() {
+        private TaskBatchRunDTO getBatchRunRequest() {
             return batchRunRequest;
         }
 
@@ -2147,7 +2218,7 @@ public class DesktopBackendService {
             this.batchTableIndex = 0;
         }
 
-        private SyncTaskProgressListener createListener(final SyncTask task) {
+        private SyncTaskProgressListener createListener(final SyncTaskDO task) {
             final long startedAt = task.getStartedAt() == null ? System.currentTimeMillis() : task.getStartedAt().longValue();
             return new SyncTaskProgressListener() {
                 @Override
@@ -2165,7 +2236,7 @@ public class DesktopBackendService {
                                            double speedRowsPerSecond, Long startedAtValue, Long endedAtValue, Long durationMillis,
                                            String progressMessage) {
                     try {
-                        SyncTask currentTask = loadTask(taskId);
+                        SyncTaskDO currentTask = loadTask(taskId);
                         currentTask.setTotalRowCount(Long.valueOf(totalRowCount));
                         currentTask.setSyncedRowCount(Long.valueOf(syncedRowCount));
                         currentTask.setSuccessRowCount(Long.valueOf(successRowCount));
@@ -2188,7 +2259,7 @@ public class DesktopBackendService {
                     if (checkpointKey == null || checkpointKey.trim().length() == 0) {
                         return;
                     }
-                    com.dbsyncstudio.model.sync.SyncCheckpoint checkpoint = new com.dbsyncstudio.model.sync.SyncCheckpoint();
+                    com.dbsyncstudio.model.sync.entity.SyncCheckpointDO checkpoint = new com.dbsyncstudio.model.sync.entity.SyncCheckpointDO();
                     checkpoint.setCheckpointKey(checkpointKey);
                     checkpoint.setCheckpointValue(checkpointValue);
                     checkpoint.setUpdatedAt(Long.valueOf(System.currentTimeMillis()));
@@ -2198,20 +2269,20 @@ public class DesktopBackendService {
         }
     }
 
-    public SyncTask runBatchTask(long taskId, TaskBatchRunRequest request) throws SQLException {
-        SyncTask task = loadTask(taskId);
-        TaskBatchRunRequest batchRunRequest = validateBatchRunRequest(request);
+    public SyncTaskDO runBatchTask(long taskId, TaskBatchRunDTO request) throws SQLException {
+        SyncTaskDO task = loadTask(taskId);
+        TaskBatchRunDTO batchRunRequest = validateBatchRunRequest(request);
         if ((batchRunRequest.getTables() == null || batchRunRequest.getTables().isEmpty()) && syncTaskTableRepository != null) {
-            List<SyncTaskTable> taskTables = syncTaskTableRepository.findByTaskId(taskId);
-            List<TaskBatchTableRequest> tables = new ArrayList<TaskBatchTableRequest>();
-            for (SyncTaskTable taskTable : taskTables) {
+            List<SyncTaskTableDO> taskTables = syncTaskTableRepository.findByTaskId(taskId);
+            List<TaskBatchTableDTO> tables = new ArrayList<TaskBatchTableDTO>();
+            for (SyncTaskTableDO taskTable : taskTables) {
                 if (taskTable == null) {
                     continue;
                 }
                 if (taskTable.getEnabled() != null && !taskTable.getEnabled().booleanValue()) {
                     continue;
                 }
-                TaskBatchTableRequest tableRequest = new TaskBatchTableRequest();
+                TaskBatchTableDTO tableRequest = new TaskBatchTableDTO();
                 tableRequest.setSourceSchemaName(taskTable.getSourceSchemaName());
                 tableRequest.setSourceTableName(taskTable.getSourceTableName());
                 tableRequest.setTargetSchemaName(taskTable.getTargetSchemaName());
@@ -2232,12 +2303,12 @@ public class DesktopBackendService {
         return startTask(taskId);
     }
 
-    private TaskBatchRunRequest validateBatchRunRequest(TaskBatchRunRequest request) {
+    private TaskBatchRunDTO validateBatchRunRequest(TaskBatchRunDTO request) {
         if (request == null) {
             throw new IllegalArgumentException("Batch run request must not be null");
         }
         if (request.getTables() != null) {
-            for (TaskBatchTableRequest tableRequest : request.getTables()) {
+            for (TaskBatchTableDTO tableRequest : request.getTables()) {
                 if (tableRequest == null) {
                     throw new IllegalArgumentException("Batch run table must not be null");
                 }
@@ -2263,7 +2334,7 @@ public class DesktopBackendService {
         return "batch-" + taskId + "-" + System.currentTimeMillis() + "-" + java.util.UUID.randomUUID().toString().substring(0, 8);
     }
 
-    private void normalizeTaskTableConfig(SyncTaskTable taskTable, SyncTask task) {
+    private void normalizeTaskTableConfig(SyncTaskTableDO taskTable, SyncTaskDO task) {
         if (taskTable == null) {
             return;
         }
@@ -2287,7 +2358,7 @@ public class DesktopBackendService {
         }
     }
 
-    private void validatePreviewRequest(DataPreviewRequest request) {
+    private void validatePreviewRequest(DataPreviewRequestDTO request) {
         if (request == null) {
             throw new IllegalArgumentException("Data preview request must not be null");
         }
@@ -2305,20 +2376,20 @@ public class DesktopBackendService {
         }
     }
 
-    private TableMetadata findTableMetadata(List<SchemaMetadata> schemas, String schemaName, String tableName) {
+    private TableMetadataDO findTableMetadata(List<SchemaMetadataDO> schemas, String schemaName, String tableName) {
         if (tableName == null || tableName.trim().length() == 0) {
             return null;
         }
         String normalizedTableName = tableName.trim();
         String copyFallbackTableName = normalizeCopyTableName(normalizedTableName);
-        TableMetadata fallback = null;
-        for (SchemaMetadata schemaMetadata : schemas) {
+        TableMetadataDO fallback = null;
+        for (SchemaMetadataDO schemaMetadata : schemas) {
             if (schemaMetadata.getTables() == null) {
                 continue;
             }
             boolean schemaMatches = schemaName == null || schemaName.trim().length() == 0
                     || schemaName.equalsIgnoreCase(schemaMetadata.getSchemaName());
-            for (TableMetadata tableMetadata : schemaMetadata.getTables()) {
+            for (TableMetadataDO tableMetadata : schemaMetadata.getTables()) {
                 if (tableMetadata.getTableName() == null) {
                     continue;
                 }
@@ -2345,10 +2416,10 @@ public class DesktopBackendService {
         return tableName.substring(0, tableName.length() - 5);
     }
 
-    private String buildPreviewSelectSql(DatasourceConfig datasource, TableMetadata tableMetadata, DataPreviewRequest request) {
+    private String buildPreviewSelectSql(DatasourceConfigDO datasource, TableMetadataDO tableMetadata, DataPreviewRequestDTO request) {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT ");
-        List<ColumnMetadata> columns = tableMetadata.getColumns();
+        List<ColumnMetadataDO> columns = tableMetadata.getColumns();
         for (int i = 0; i < columns.size(); i++) {
             if (i > 0) {
                 sql.append(", ");
@@ -2379,12 +2450,12 @@ public class DesktopBackendService {
         return sql.toString();
     }
 
-    private String buildPreviewWhereClause(List<ColumnMetadata> columns, DataPreviewRequest request) {
+    private String buildPreviewWhereClause(List<ColumnMetadataDO> columns, DataPreviewRequestDTO request) {
         if (request.getFilters() == null || request.getFilters().isEmpty()) {
             return "";
         }
         List<String> clauses = new ArrayList<String>();
-        for (DataPreviewFilter filter : request.getFilters()) {
+        for (DataPreviewFilterDTO filter : request.getFilters()) {
             if (filter == null || filter.getColumnName() == null || filter.getColumnName().trim().length() == 0) {
                 continue;
             }
@@ -2406,8 +2477,8 @@ public class DesktopBackendService {
         return joinClauses(clauses, " AND ");
     }
 
-    private String buildPreviewOrderByClause(List<ColumnMetadata> columns) {
-        for (ColumnMetadata columnMetadata : columns) {
+    private String buildPreviewOrderByClause(List<ColumnMetadataDO> columns) {
+        for (ColumnMetadataDO columnMetadata : columns) {
             if (columnMetadata.isPrimaryKey()) {
                 return quoteIdentifier(columnMetadata.getName());
             }
@@ -2425,16 +2496,16 @@ public class DesktopBackendService {
         return " LIMIT ? OFFSET ?";
     }
 
-    private void bindPreviewParameters(PreparedStatement statement, DataPreviewRequest request) throws SQLException {
+    private void bindPreviewParameters(PreparedStatement statement, DataPreviewRequestDTO request) throws SQLException {
         int index = bindPreviewFilterParameters(statement, request);
         statement.setInt(index, request.getPageSize());
         statement.setInt(index + 1, (request.getPageNumber() - 1) * request.getPageSize());
     }
 
-    private int bindPreviewFilterParameters(PreparedStatement statement, DataPreviewRequest request) throws SQLException {
+    private int bindPreviewFilterParameters(PreparedStatement statement, DataPreviewRequestDTO request) throws SQLException {
         int index = 1;
         if (request.getFilters() != null) {
-            for (DataPreviewFilter filter : request.getFilters()) {
+            for (DataPreviewFilterDTO filter : request.getFilters()) {
                 if (filter == null || filter.getColumnName() == null || filter.getColumnName().trim().length() == 0) {
                     continue;
                 }
@@ -2453,8 +2524,8 @@ public class DesktopBackendService {
         return index;
     }
 
-    private String resolveAllowedColumn(List<ColumnMetadata> columns, String columnName) {
-        for (ColumnMetadata columnMetadata : columns) {
+    private String resolveAllowedColumn(List<ColumnMetadataDO> columns, String columnName) {
+        for (ColumnMetadataDO columnMetadata : columns) {
             if (columnMetadata.getName().equalsIgnoreCase(columnName)) {
                 return columnMetadata.getName();
             }
@@ -2495,7 +2566,7 @@ public class DesktopBackendService {
         return builder.toString();
     }
 
-    private void validateSqlRequest(SqlExecutionRequest request) {
+    private void validateSqlRequest(SqlExecutionRequestDTO request) {
         if (request == null) {
             throw new IllegalArgumentException("SQL execution request must not be null");
         }
@@ -2583,8 +2654,8 @@ public class DesktopBackendService {
         return identifier;
     }
 
-    private void saveSchemaComparisonHistory(SchemaComparisonRequest request, SchemaComparisonResult result) {
-        SchemaComparisonHistoryEntry entry = new SchemaComparisonHistoryEntry();
+    private void saveSchemaComparisonHistory(SchemaComparisonRequestDTO request, SchemaComparisonResultVO result) {
+        SchemaComparisonHistoryEntryDO entry = new SchemaComparisonHistoryEntryDO();
         entry.setSourceDatasourceId(request.getSourceDatasource().getId());
         entry.setTargetDatasourceId(request.getTargetDatasource().getId());
         entry.setSourceSchemaName(request.getSourceSchemaName());
@@ -2596,16 +2667,16 @@ public class DesktopBackendService {
         schemaComparisonHistoryRepository.save(entry);
     }
 
-    public static String buildSchemaComparisonHistorySummary(SchemaComparisonResult result) {
-        List<SchemaDiffEntry> diffEntries = result == null || result.getDiffEntries() == null
-                ? Collections.<SchemaDiffEntry>emptyList()
+    public static String buildSchemaComparisonHistorySummary(SchemaComparisonResultVO result) {
+        List<SchemaDiffEntryDO> diffEntries = result == null || result.getDiffEntries() == null
+                ? Collections.<SchemaDiffEntryDO>emptyList()
                 : result.getDiffEntries();
         List<String> sqlList = result == null || result.getSuggestedSqlList() == null
                 ? Collections.<String>emptyList()
                 : result.getSuggestedSqlList();
 
         Map<String, Integer> diffTypeCounts = new LinkedHashMap<String, Integer>();
-        for (SchemaDiffEntry entry : diffEntries) {
+        for (SchemaDiffEntryDO entry : diffEntries) {
             if (entry == null || entry.getDiffType() == null) {
                 continue;
             }
@@ -2631,7 +2702,7 @@ public class DesktopBackendService {
         return builder.toString();
     }
 
-    private void validateSchemaSqlRequest(SchemaSqlPreviewRequest request) {
+    private void validateSchemaSqlRequest(SchemaSqlPreviewRequestDTO request) {
         if (request == null) {
             throw new IllegalArgumentException("Schema SQL request must not be null");
         }
@@ -2641,12 +2712,12 @@ public class DesktopBackendService {
         }
     }
 
-    public SyncTask runTask(long taskId) throws SQLException {
+    public SyncTaskDO runTask(long taskId) throws SQLException {
         return startTask(taskId);
     }
 
-    public SyncTask startTask(long taskId) throws SQLException {
-        SyncTask task = loadTask(taskId);
+    public SyncTaskDO startTask(long taskId) throws SQLException {
+        SyncTaskDO task = loadTask(taskId);
         if (task.getTaskStatus() == SyncTaskStatus.RUNNING) {
             return task;
         }
@@ -2675,10 +2746,10 @@ public class DesktopBackendService {
         return task;
     }
 
-    public SyncTask pauseTask(long taskId) throws SQLException {
+    public SyncTaskDO pauseTask(long taskId) throws SQLException {
         TaskExecutionState state = ensureTaskState(taskId);
         state.pause();
-        SyncTask task = loadTask(taskId);
+        SyncTaskDO task = loadTask(taskId);
         task.setTaskStatus(SyncTaskStatus.PAUSED);
         task.setProgressMessage("Pause requested");
         syncTaskRepository.save(task);
@@ -2686,8 +2757,8 @@ public class DesktopBackendService {
         return task;
     }
 
-    public SyncTask resumeTask(long taskId) throws SQLException {
-        SyncTask task = loadTask(taskId);
+    public SyncTaskDO resumeTask(long taskId) throws SQLException {
+        SyncTaskDO task = loadTask(taskId);
         if (task.getTaskStatus() != SyncTaskStatus.PAUSED && task.getTaskStatus() != SyncTaskStatus.STOPPED) {
             return task;
         }
@@ -2697,10 +2768,10 @@ public class DesktopBackendService {
     }
 
     public int recoverUnfinishedTasks() throws SQLException {
-        List<SyncTask> tasks = syncTaskRepository.findAll();
+        List<SyncTaskDO> tasks = syncTaskRepository.findAll();
         int recoveredCount = 0;
         long now = System.currentTimeMillis();
-        for (SyncTask task : tasks) {
+        for (SyncTaskDO task : tasks) {
             if (task == null || task.getId() == null || task.getTaskStatus() != SyncTaskStatus.RUNNING) {
                 continue;
             }
@@ -2716,10 +2787,10 @@ public class DesktopBackendService {
         return recoveredCount;
     }
 
-    public SyncTask stopTask(long taskId) throws SQLException {
+    public SyncTaskDO stopTask(long taskId) throws SQLException {
         TaskExecutionState state = ensureTaskState(taskId);
         state.stop();
-        SyncTask task = loadTask(taskId);
+        SyncTaskDO task = loadTask(taskId);
         task.setTaskStatus(SyncTaskStatus.STOPPED);
         task.setEndedAt(Long.valueOf(System.currentTimeMillis()));
         task.setProgressMessage("Stop requested");
@@ -2728,20 +2799,20 @@ public class DesktopBackendService {
         return task;
     }
 
-    public List<SyncTask> listTasksWithProgress() throws SQLException {
+    public List<SyncTaskDO> listTasksWithProgress() throws SQLException {
         return listTasks();
     }
 
-    public DataPreviewResult previewTableData(DataPreviewRequest request) throws SQLException {
+    public DataPreviewResultVO previewTableData(DataPreviewRequestDTO request) throws SQLException {
         validatePreviewRequest(request);
-        DatasourceConfig datasource = request.getDatasource();
-        List<SchemaMetadata> schemas = metadataScanner.scan(datasource);
-        TableMetadata tableMetadata = findTableMetadata(schemas, request.getSchemaName(), request.getTableName());
+        DatasourceConfigDO datasource = request.getDatasource();
+        List<SchemaMetadataDO> schemas = metadataScanner.scan(datasource);
+        TableMetadataDO tableMetadata = findTableMetadata(schemas, request.getSchemaName(), request.getTableName());
         if (tableMetadata == null) {
             throw new SQLException("Table not found: " + request.getTableName());
         }
 
-        List<ColumnMetadata> columns = tableMetadata.getColumns();
+        List<ColumnMetadataDO> columns = tableMetadata.getColumns();
         String selectSql = buildPreviewSelectSql(datasource, tableMetadata, request);
         String countSql = "SELECT COUNT(1) FROM " + qualifiedTableName(tableMetadata.getSchemaName(), tableMetadata.getTableName());
         String whereClause = buildPreviewWhereClause(columns, request);
@@ -2769,11 +2840,11 @@ public class DesktopBackendService {
                 }
 
                 List<String> columnNames = new ArrayList<String>();
-                for (ColumnMetadata columnMetadata : columns) {
+                for (ColumnMetadataDO columnMetadata : columns) {
                     columnNames.add(columnMetadata.getName());
                 }
 
-                DataPreviewResult result = new DataPreviewResult();
+                DataPreviewResultVO result = new DataPreviewResultVO();
                 result.setColumns(columnNames);
                 result.setRows(rows);
                 result.setTotalRowCount(totalRowCount);
@@ -2784,17 +2855,17 @@ public class DesktopBackendService {
         }
     }
 
-    public SqlExecutionResult executeSql(SqlExecutionRequest request) throws SQLException {
+    public SqlExecutionResultVO executeSql(SqlExecutionRequestDTO request) throws SQLException {
         validateSqlRequest(request);
         long startTime = System.currentTimeMillis();
-        DatasourceConfig datasource = request.getDatasource();
+        DatasourceConfigDO datasource = request.getDatasource();
         String sql = sanitizeSql(request.getSql());
         String statementType = resolveSqlStatementType(sql);
         if (isDangerousStatement(statementType) && !request.isAllowDangerousSql()) {
             throw new SQLException("Dangerous SQL is disabled by default: " + statementType);
         }
 
-        SqlExecutionLogEntry logEntry = SqlExecutionLogEntry.builder()
+        SqlExecutionLogEntryDO logEntry = SqlExecutionLogEntryDO.builder()
                 .datasourceId(datasource.getId())
                 .sqlText(sql)
                 .statementType(statementType)
@@ -2804,7 +2875,7 @@ public class DesktopBackendService {
 
         try (Connection connection = com.dbsyncstudio.core.connection.JdbcConnectionSupport.openConnection(datasource);
              Statement statement = connection.createStatement()) {
-            SqlExecutionResult result = new SqlExecutionResult();
+            SqlExecutionResultVO result = new SqlExecutionResultVO();
             result.setStatementType(statementType);
             if (isQueryStatement(statementType)) {
                 try (ResultSet resultSet = statement.executeQuery(sql)) {
@@ -2849,28 +2920,28 @@ public class DesktopBackendService {
         }
     }
 
-    public BackendDashboardStats dashboardStats() throws SQLException {
-        List<DatasourceConfig> datasources = datasourceRepository.findAll();
-        List<SyncTask> tasks = syncTaskRepository.findAll();
-        return new BackendDashboardStats(datasources.size(), tasks.size(), listAllLogs(tasks).size());
+    public BackendDashboardStatsVO dashboardStats() throws SQLException {
+        List<DatasourceConfigDO> datasources = datasourceRepository.findAll();
+        List<SyncTaskDO> tasks = syncTaskRepository.findAll();
+        return new BackendDashboardStatsVO(datasources.size(), tasks.size(), listAllLogs(tasks).size());
     }
 
-    public BackendDiagnosticsResponse diagnosticsStatus() throws SQLException {
-        BackendDiagnosticsResponse response = new BackendDiagnosticsResponse();
+    public BackendDiagnosticsVO diagnosticsStatus() throws SQLException {
+        BackendDiagnosticsVO response = new BackendDiagnosticsVO();
         response.setGeneratedAt(System.currentTimeMillis());
-        response.setApplicationDirectory(AppEnvironmentInfo.appDirectory().getAbsolutePath());
-        response.setLogsDirectory(AppEnvironmentInfo.logsDirectory().getAbsolutePath());
+        response.setApplicationDirectory(EnvironmentUtils.appDirectory().getAbsolutePath());
+        response.setLogsDirectory(EnvironmentUtils.logsDirectory().getAbsolutePath());
         response.setDatabaseFilePath(connectionFactory == null || connectionFactory.getDatabaseFile() == null
                 ? null
                 : connectionFactory.getDatabaseFile().getAbsolutePath());
-        response.setSchemaVersion(com.dbsyncstudio.store.sqlite.SqliteSchemaInitializer.currentSchemaVersion());
+        response.setSchemaVersion(com.dbsyncstudio.store.sqlite.DatabaseSchemaInitializer.currentSchemaVersion());
         response.setDatabaseUserVersion(readDatabaseUserVersion());
         response.setMigrationEntryCount(readMigrationEntryCount());
-        List<SyncTask> tasks = syncTaskRepository.findAll();
+        List<SyncTaskDO> tasks = syncTaskRepository.findAll();
         response.setTotalTaskCount(tasks.size());
         int unfinishedTaskCount = 0;
         int runningTaskCount = 0;
-        for (SyncTask task : tasks) {
+        for (SyncTaskDO task : tasks) {
             if (task != null && task.getTaskStatus() == SyncTaskStatus.RUNNING) {
                 unfinishedTaskCount++;
                 runningTaskCount++;
@@ -2882,62 +2953,62 @@ public class DesktopBackendService {
         return response;
     }
 
-    public MonitoringOverviewResponse monitoringOverview() throws SQLException {
+    public MonitoringOverviewVO monitoringOverview() throws SQLException {
         long now = System.currentTimeMillis();
         long dayStart = startOfDay(now);
         long dayEnd = dayStart + 24L * 60L * 60L * 1000L;
-        TaskRunMetricSummary summary = monitoringRepository == null
-                ? TaskRunMetricSummary.builder()
+        TaskRunMetricSummaryVO summary = monitoringRepository == null
+                ? TaskRunMetricSummaryVO.builder()
                 .totalTaskCount(Integer.valueOf(0))
                 .successTaskCount(Integer.valueOf(0))
                 .failedTaskCount(Integer.valueOf(0))
                 .latestRunningTaskCount(Integer.valueOf(taskExecutionStates.size()))
                 .build()
                 : monitoringRepository.summarizeTaskMetricsForToday(dayStart, dayEnd);
-        TaskRunMetric latestTaskMetric = null;
+        TaskRunMetricDO latestTaskMetric = null;
         if (monitoringRepository != null) {
-            List<TaskRunMetric> latestMetrics = monitoringRepository.findTaskRunMetrics(null, null, null, null, 1);
+            List<TaskRunMetricDO> latestMetrics = monitoringRepository.findTaskRunMetrics(null, null, null, null, 1);
             if (!latestMetrics.isEmpty()) {
                 latestTaskMetric = latestMetrics.get(0);
             }
         }
-        MonitoringOverviewResponse response = new MonitoringOverviewResponse();
+        MonitoringOverviewVO response = new MonitoringOverviewVO();
         response.setSummary(summary);
         response.setLatestTaskMetric(latestTaskMetric);
         return response;
     }
 
-    public List<TaskRunMetric> listTaskRunMetrics(String runId, Long taskId, Long startTime, Long endTime, int limit) throws SQLException {
+    public List<TaskRunMetricDO> listTaskRunMetrics(String runId, Long taskId, Long startTime, Long endTime, int limit) throws SQLException {
         if (monitoringRepository == null) {
-            return new ArrayList<TaskRunMetric>();
+            return new ArrayList<TaskRunMetricDO>();
         }
         return monitoringRepository.findTaskRunMetrics(trimToNull(runId), taskId, startTime, endTime, limit);
     }
 
-    public List<TableRunMetric> listTableRunMetrics(String runId, Long taskId, Long tableTaskId, Long startTime,
+    public List<TableRunMetricDO> listTableRunMetrics(String runId, Long taskId, Long tableTaskId, Long startTime,
                                                     Long endTime, int limit) throws SQLException {
         if (monitoringRepository == null) {
-            return new ArrayList<TableRunMetric>();
+            return new ArrayList<TableRunMetricDO>();
         }
         return monitoringRepository.findTableRunMetrics(trimToNull(runId), taskId, tableTaskId, startTime, endTime, limit);
     }
 
-    public List<DatasourceConnectionMetric> listDatasourceConnectionMetrics(Long datasourceId, Long startTime, Long endTime,
+    public List<DatasourceConnectionMetricDO> listDatasourceConnectionMetrics(Long datasourceId, Long startTime, Long endTime,
                                                                             int limit) throws SQLException {
         if (monitoringRepository == null) {
-            return new ArrayList<DatasourceConnectionMetric>();
+            return new ArrayList<DatasourceConnectionMetricDO>();
         }
         return monitoringRepository.findDatasourceConnectionMetrics(datasourceId, startTime, endTime, limit);
     }
 
-    public MonitoringTrendResponse taskRunTrend(String runId, Long taskId, Long startTime, Long endTime, int limit) throws SQLException {
-        List<TaskRunMetric> metrics = listTaskRunMetrics(runId, taskId, startTime, endTime, limit);
-        List<MonitoringTrendPoint> points = new ArrayList<MonitoringTrendPoint>();
-        for (TaskRunMetric metric : metrics) {
+    public MonitoringTrendVO taskRunTrend(String runId, Long taskId, Long startTime, Long endTime, int limit) throws SQLException {
+        List<TaskRunMetricDO> metrics = listTaskRunMetrics(runId, taskId, startTime, endTime, limit);
+        List<MonitoringTrendPointVO> points = new ArrayList<MonitoringTrendPointVO>();
+        for (TaskRunMetricDO metric : metrics) {
             if (metric == null) {
                 continue;
             }
-            MonitoringTrendPoint point = new MonitoringTrendPoint();
+            MonitoringTrendPointVO point = new MonitoringTrendPointVO();
             point.setMetricTime(metric.getMetricTime());
             point.setSuccessRowCount(metric.getSuccessRowCount());
             point.setFailedRowCount(metric.getFailedRowCount());
@@ -2947,14 +3018,14 @@ public class DesktopBackendService {
             points.add(point);
         }
         Collections.reverse(points);
-        MonitoringTrendResponse response = new MonitoringTrendResponse();
+        MonitoringTrendVO response = new MonitoringTrendVO();
         response.setTaskRunTrend(points);
         return response;
     }
 
-    public MonitoringCleanupSummary cleanupMonitoringMetrics(Integer retentionDays) throws SQLException {
+    public MonitoringCleanupSummaryVO cleanupMonitoringMetrics(Integer retentionDays) throws SQLException {
         if (monitoringRepository == null) {
-            return MonitoringCleanupSummary.builder()
+            return MonitoringCleanupSummaryVO.builder()
                     .retentionDays(Integer.valueOf(retentionDays == null || retentionDays.intValue() <= 0
                             ? DEFAULT_MONITORING_RETENTION_DAYS : retentionDays.intValue()))
                     .cutoffTime(Long.valueOf(System.currentTimeMillis()))
@@ -2968,8 +3039,8 @@ public class DesktopBackendService {
         return monitoringRepository.cleanupExpiredMetrics(safeRetentionDays, System.currentTimeMillis());
     }
 
-    private AppSettings defaultAppSettings() {
-        return AppSettings.builder()
+    private AppSettingsDO defaultAppSettings() {
+        return AppSettingsDO.builder()
                 .logRetentionDays(Integer.valueOf(DEFAULT_LOG_RETENTION_DAYS))
                 .monitoringRetentionDays(Integer.valueOf(DEFAULT_MONITORING_RETENTION_DAYS))
                 .defaultPageSize(Integer.valueOf(100))
@@ -2983,12 +3054,12 @@ public class DesktopBackendService {
                 .build();
     }
 
-    private AppSettings mergeWithDefaults(AppSettings settings) {
-        AppSettings defaults = defaultAppSettings();
+    private AppSettingsDO mergeWithDefaults(AppSettingsDO settings) {
+        AppSettingsDO defaults = defaultAppSettings();
         if (settings == null) {
             return defaults;
         }
-        AppSettings merged = copySettings(settings);
+        AppSettingsDO merged = copySettings(settings);
         if (merged.getLogRetentionDays() == null) {
             merged.setLogRetentionDays(defaults.getLogRetentionDays());
         }
@@ -3022,11 +3093,11 @@ public class DesktopBackendService {
         return merged;
     }
 
-    private AppSettings copySettings(AppSettings settings) {
+    private AppSettingsDO copySettings(AppSettingsDO settings) {
         if (settings == null) {
             return null;
         }
-        return AppSettings.builder()
+        return AppSettingsDO.builder()
                 .logRetentionDays(settings.getLogRetentionDays())
                 .monitoringRetentionDays(settings.getMonitoringRetentionDays())
                 .defaultPageSize(settings.getDefaultPageSize())
@@ -3048,18 +3119,18 @@ public class DesktopBackendService {
         return value.trim();
     }
 
-    public List<FieldMappingRule> listFieldMappings(long taskId) throws SQLException {
+    public List<FieldMappingRuleDO> listFieldMappings(long taskId) throws SQLException {
         return fieldMappingRepository.findByTaskId(taskId);
     }
 
-    public List<FieldMappingSuggestion> suggestFieldMappings(long taskId) throws SQLException {
-        SyncTask task = loadTask(taskId);
-        DatasourceConfig source = loadDatasource(task.getSourceDatasourceId().longValue(), "Source datasource not found: ");
-        DatasourceConfig target = loadDatasource(task.getTargetDatasourceId().longValue(), "Target datasource not found: ");
-        List<SchemaMetadata> sourceSchemas = metadataScanner.scan(source);
-        List<SchemaMetadata> targetSchemas = metadataScanner.scan(target);
-        TableMetadata sourceTable = findTableMetadata(sourceSchemas, task.getSourceSchemaName(), task.getSourceTableName());
-        TableMetadata targetTable = findTableMetadata(targetSchemas, task.getTargetSchemaName(), task.getTargetTableName());
+    public List<FieldMappingSuggestionVO> suggestFieldMappings(long taskId) throws SQLException {
+        SyncTaskDO task = loadTask(taskId);
+        DatasourceConfigDO source = loadDatasource(task.getSourceDatasourceId().longValue(), "Source datasource not found: ");
+        DatasourceConfigDO target = loadDatasource(task.getTargetDatasourceId().longValue(), "Target datasource not found: ");
+        List<SchemaMetadataDO> sourceSchemas = metadataScanner.scan(source);
+        List<SchemaMetadataDO> targetSchemas = metadataScanner.scan(target);
+        TableMetadataDO sourceTable = findTableMetadata(sourceSchemas, task.getSourceSchemaName(), task.getSourceTableName());
+        TableMetadataDO targetTable = findTableMetadata(targetSchemas, task.getTargetSchemaName(), task.getTargetTableName());
         if (sourceTable == null) {
             throw new SQLException("Source table not found: " + task.getSourceTableName());
         }
@@ -3069,7 +3140,7 @@ public class DesktopBackendService {
         return fieldMappingSuggestionMatcher.match(sourceTable.getColumns(), targetTable.getColumns());
     }
 
-    public SchemaComparisonResult compareSchema(SchemaComparisonRequest request) throws SQLException {
+    public SchemaComparisonResultVO compareSchema(SchemaComparisonRequestDTO request) throws SQLException {
         if (request == null) {
             throw new IllegalArgumentException("Schema comparison request must not be null");
         }
@@ -3081,23 +3152,23 @@ public class DesktopBackendService {
         if (request.getTargetTableName() == null || request.getTargetTableName().trim().length() == 0) {
             throw new IllegalArgumentException("Target table name must not be blank");
         }
-        List<SchemaMetadata> sourceSchemas = metadataScanner.scan(request.getSourceDatasource());
-        List<SchemaMetadata> targetSchemas = metadataScanner.scan(request.getTargetDatasource());
-        TableMetadata sourceTable = findTableMetadata(sourceSchemas, request.getSourceSchemaName(), request.getSourceTableName());
-        TableMetadata targetTable = findTableMetadata(targetSchemas, request.getTargetSchemaName(), request.getTargetTableName());
+        List<SchemaMetadataDO> sourceSchemas = metadataScanner.scan(request.getSourceDatasource());
+        List<SchemaMetadataDO> targetSchemas = metadataScanner.scan(request.getTargetDatasource());
+        TableMetadataDO sourceTable = findTableMetadata(sourceSchemas, request.getSourceSchemaName(), request.getSourceTableName());
+        TableMetadataDO targetTable = findTableMetadata(targetSchemas, request.getTargetSchemaName(), request.getTargetTableName());
         if (sourceTable == null) {
             throw new SQLException("Source table not found: " + request.getSourceTableName());
         }
         if (targetTable == null) {
             throw new SQLException("Target table not found: " + request.getTargetTableName());
         }
-        SchemaComparisonResult result = schemaComparisonEngine.compare(request, sourceTable, targetTable,
+        SchemaComparisonResultVO result = schemaComparisonEngine.compare(request, sourceTable, targetTable,
                 DatabaseDialect.from(request.getTargetDatasource().getType()));
         saveSchemaComparisonHistory(request, result);
         return result;
     }
 
-    public SchemaSqlPreviewResult previewSchemaSql(SchemaSqlPreviewRequest request) throws SQLException {
+    public SchemaSqlPreviewResultVO previewSchemaSql(SchemaSqlPreviewRequestDTO request) throws SQLException {
         validateSchemaSqlRequest(request);
         String sql = trimSql(request.getSql());
         List<String> statements = splitSqlStatements(sql);
@@ -3108,7 +3179,7 @@ public class DesktopBackendService {
                 executable = executable && request.isAllowDangerousSql();
             }
         }
-        SchemaSqlPreviewResult result = new SchemaSqlPreviewResult();
+        SchemaSqlPreviewResultVO result = new SchemaSqlPreviewResultVO();
         result.setExecutable(statements.isEmpty() || executable);
         result.setStatementType(statementType);
         result.setSql(sql);
@@ -3116,7 +3187,7 @@ public class DesktopBackendService {
         return result;
     }
 
-    public SqlExecutionResult executeSchemaSql(SchemaSqlPreviewRequest request) throws SQLException {
+    public SqlExecutionResultVO executeSchemaSql(SchemaSqlPreviewRequestDTO request) throws SQLException {
         validateSchemaSqlRequest(request);
         String sql = trimSql(request.getSql());
         List<String> statements = splitSqlStatements(sql);
@@ -3125,8 +3196,8 @@ public class DesktopBackendService {
         }
 
         long startTime = System.currentTimeMillis();
-        DatasourceConfig datasource = request.getDatasource();
-        SqlExecutionLogEntry logEntry = SqlExecutionLogEntry.builder()
+        DatasourceConfigDO datasource = request.getDatasource();
+        SqlExecutionLogEntryDO logEntry = SqlExecutionLogEntryDO.builder()
                 .datasourceId(datasource.getId())
                 .sqlText(sql)
                 .statementType(resolveSqlStatementType(sql))
@@ -3145,7 +3216,7 @@ public class DesktopBackendService {
                 affectedRows += statement.executeUpdate(statementSql);
             }
 
-            SqlExecutionResult result = new SqlExecutionResult();
+            SqlExecutionResultVO result = new SqlExecutionResultVO();
             result.setSuccess(true);
             result.setStatementType(resolveSqlStatementType(sql));
             result.setMessage("DDL executed successfully");
@@ -3164,8 +3235,8 @@ public class DesktopBackendService {
         }
     }
 
-    public SyncTask updateScheduleState(long taskId, boolean enabled, String scheduleType, String cronExpression, Integer intervalSeconds) throws SQLException {
-        SyncTask task = loadTask(taskId);
+    public SyncTaskDO updateScheduleState(long taskId, boolean enabled, String scheduleType, String cronExpression, Integer intervalSeconds) throws SQLException {
+        SyncTaskDO task = loadTask(taskId);
         String normalizedScheduleType = scheduleType == null ? null : scheduleType.trim().toUpperCase(Locale.ROOT);
         boolean manualSchedule = "MANUAL".equals(normalizedScheduleType);
         task.setScheduleEnabled(Boolean.valueOf(enabled && !manualSchedule));
@@ -3181,7 +3252,7 @@ public class DesktopBackendService {
         return task;
     }
 
-    public FieldMappingRule saveFieldMapping(FieldMappingRule mappingRule) throws SQLException {
+    public FieldMappingRuleDO saveFieldMapping(FieldMappingRuleDO mappingRule) throws SQLException {
         validateMapping(mappingRule);
         fieldMappingRepository.save(mappingRule);
         return mappingRule;
@@ -3191,13 +3262,108 @@ public class DesktopBackendService {
         return fieldMappingRepository.deleteById(id);
     }
 
-    public List<SchemaMetadata> scanMetadata(long datasourceId) throws SQLException {
-        DatasourceConfig config = loadDatasource(datasourceId, "Datasource not found: ");
+    public List<TransformRuleDO> listTransformRules(Long taskId, Long tableTaskId, Long fieldMappingId) throws SQLException {
+        ensureTransformRuleRepository();
+        if (taskId == null) {
+            return new ArrayList<TransformRuleDO>();
+        }
+        List<TransformRuleDO> rules = transformRuleRepository.findByTaskId(taskId.longValue());
+        List<TransformRuleDO> result = new ArrayList<TransformRuleDO>();
+        for (TransformRuleDO rule : rules) {
+            if (rule == null) {
+                continue;
+            }
+            if (tableTaskId != null) {
+                if (rule.getTableTaskId() != null && !tableTaskId.equals(rule.getTableTaskId())) {
+                    continue;
+                }
+            } else if (rule.getTableTaskId() != null) {
+                continue;
+            }
+            if (fieldMappingId != null) {
+                if (rule.getFieldMappingId() == null || !fieldMappingId.equals(rule.getFieldMappingId())) {
+                    continue;
+                }
+            }
+            result.add(rule);
+        }
+        return result;
+    }
+
+    public TransformRuleDO saveTransformRule(TransformRuleDO rule) throws SQLException {
+        ensureTransformRuleRepository();
+        validateTransformRule(rule);
+        transformRuleRepository.save(rule);
+        return rule;
+    }
+
+    public boolean deleteTransformRule(long id) throws SQLException {
+        ensureTransformRuleRepository();
+        return transformRuleRepository.deleteById(id);
+    }
+
+    public TransformRuleDO setTransformRuleEnabled(long id, boolean enabled) throws SQLException {
+        ensureTransformRuleRepository();
+        TransformRuleDO rule = transformRuleRepository.findById(id).orElse(null);
+        if (rule == null) {
+            throw new SQLException("Transform rule not found: " + id);
+        }
+        rule.setEnabled(Boolean.valueOf(enabled));
+        transformRuleRepository.save(rule);
+        return rule;
+    }
+
+    public TransformTestResultVO testTransformRule(TransformRuleDO rule, Object value) {
+        TransformTestRequestDTO request = new TransformTestRequestDTO();
+        request.setValue(value);
+        request.setRules(java.util.Collections.singletonList(rule));
+        return testTransformRules(request);
+    }
+
+    public TransformTestResultVO testTransformRules(TransformTestRequestDTO request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Transform test request must not be null");
+        }
+        TransformContext context = TransformContext.builder()
+                .taskId(request.getTaskId())
+                .tableTaskId(request.getTableTaskId())
+                .fieldMappingId(request.getFieldMappingId())
+                .sourceField(request.getSourceField())
+                .targetField(request.getTargetField())
+                .runId(request.getRunId())
+                .currentValue(request.getValue())
+                .build();
+        return transformEngine.test(request.getValue(), request.getRules(), context);
+    }
+
+    public TransformPlan loadTransformPlan(Long taskId, Long tableTaskId) throws SQLException {
+        if (transformRuleRepository == null || taskId == null) {
+            return transformEngine.compile(java.util.Collections.<String, java.util.List<TransformRuleDO>>emptyMap());
+        }
+        List<TransformRuleDO> rules = listTransformRules(taskId, tableTaskId, null);
+        Map<String, List<TransformRuleDO>> rulesByField = new LinkedHashMap<String, List<TransformRuleDO>>();
+        for (TransformRuleDO rule : rules) {
+            String fieldKey = resolveTransformFieldKey(rule);
+            if (fieldKey == null) {
+                continue;
+            }
+            List<TransformRuleDO> fieldRules = rulesByField.get(fieldKey);
+            if (fieldRules == null) {
+                fieldRules = new ArrayList<TransformRuleDO>();
+                rulesByField.put(fieldKey, fieldRules);
+            }
+            fieldRules.add(rule);
+        }
+        return transformEngine.compile(rulesByField);
+    }
+
+    public List<SchemaMetadataDO> scanMetadata(long datasourceId) throws SQLException {
+        DatasourceConfigDO config = loadDatasource(datasourceId, "Datasource not found: ");
         return metadataScanner.scan(config);
     }
 
-    private FullSyncResult fullSync(SyncTask task, DatasourceConfig source, DatasourceConfig target) {
-        FullSyncRequest request = FullSyncRequest.builder()
+    private FullSyncResultVO fullSync(SyncTaskDO task, DatasourceConfigDO source, DatasourceConfigDO target) {
+        FullSyncRequestDTO request = FullSyncRequestDTO.builder()
                 .sourceDatasource(source)
                 .targetDatasource(target)
                 .sourceSchemaName(task.getSourceSchemaName())
@@ -3208,13 +3374,13 @@ public class DesktopBackendService {
                 .batchSize(500)
                 .replaceTargetData(true)
                 .build();
-        FullSyncResult result = fullSyncEngine.sync(request);
+        FullSyncResultVO result = fullSyncEngine.sync(request);
         appendLog(task.getId().longValue(), "INFO", "Full sync inserted " + result.getInsertedRowCount() + " rows");
         return result;
     }
 
-    private IncrementalSyncResult incrementalSync(SyncTask task, DatasourceConfig source, DatasourceConfig target) {
-        IncrementalSyncRequest request = IncrementalSyncRequest.builder()
+    private IncrementalSyncResultVO incrementalSync(SyncTaskDO task, DatasourceConfigDO source, DatasourceConfigDO target) {
+        IncrementalSyncRequestDTO request = IncrementalSyncRequestDTO.builder()
                 .sourceDatasource(source)
                 .targetDatasource(target)
                 .sourceSchemaName(task.getSourceSchemaName())
@@ -3227,12 +3393,12 @@ public class DesktopBackendService {
                 .batchSize(500)
                 .replaceTargetData(false)
                 .build();
-        IncrementalSyncResult result = incrementalSyncEngine.sync(request);
+        IncrementalSyncResultVO result = incrementalSyncEngine.sync(request);
         appendLog(task.getId().longValue(), "INFO", "Incremental sync inserted " + result.getInsertedRowCount() + " rows");
         return result;
     }
 
-    private void validateDatasource(DatasourceConfig config) {
+    private void validateDatasource(DatasourceConfigDO config) {
         if (config == null) {
             throw new IllegalArgumentException("Datasource must not be null");
         }
@@ -3244,7 +3410,7 @@ public class DesktopBackendService {
         }
     }
 
-    private void validateTask(SyncTask task) {
+    private void validateTask(SyncTaskDO task) {
         if (task == null) {
             throw new IllegalArgumentException("Sync task must not be null");
         }
@@ -3265,7 +3431,7 @@ public class DesktopBackendService {
         }
     }
 
-    private void normalizeSchedule(SyncTask task) {
+    private void normalizeSchedule(SyncTaskDO task) {
         Boolean enabled = task.getScheduleEnabled();
         if (enabled == null || !enabled.booleanValue()) {
             task.setScheduleNextRunAt(null);
@@ -3277,7 +3443,7 @@ public class DesktopBackendService {
         setNextScheduleRunAt(task, System.currentTimeMillis());
     }
 
-    private void updateScheduleResult(SyncTask task, String lastResult, String lastMessage) {
+    private void updateScheduleResult(SyncTaskDO task, String lastResult, String lastMessage) {
         if (task == null || task.getScheduleEnabled() == null || !task.getScheduleEnabled().booleanValue()) {
             return;
         }
@@ -3287,7 +3453,7 @@ public class DesktopBackendService {
         setNextScheduleRunAt(task, baseTime);
     }
 
-    private void validateMapping(FieldMappingRule mappingRule) {
+    private void validateMapping(FieldMappingRuleDO mappingRule) {
         if (mappingRule == null) {
             throw new IllegalArgumentException("Field mapping must not be null");
         }
@@ -3302,8 +3468,55 @@ public class DesktopBackendService {
         }
     }
 
+    private void validateTransformRule(TransformRuleDO rule) {
+        if (rule == null) {
+            throw new IllegalArgumentException("Transform rule must not be null");
+        }
+        if (rule.getTaskId() == null) {
+            throw new IllegalArgumentException("Task id must not be null");
+        }
+        if (rule.getSourceField() == null || rule.getSourceField().trim().length() == 0) {
+            throw new IllegalArgumentException("Source field must not be blank");
+        }
+        if (rule.getTargetField() == null || rule.getTargetField().trim().length() == 0) {
+            throw new IllegalArgumentException("Target field must not be blank");
+        }
+        if (rule.getTransformType() == null || rule.getTransformType().trim().length() == 0) {
+            throw new IllegalArgumentException("Transform type must not be blank");
+        }
+        if (rule.getOnError() == null) {
+            rule.setOnError(TransformErrorStrategy.FAIL);
+        }
+        if (rule.getTransformOrder() == null) {
+            rule.setTransformOrder(Integer.valueOf(0));
+        }
+        if (rule.getEnabled() == null) {
+            rule.setEnabled(Boolean.TRUE);
+        }
+    }
+
+    private void ensureTransformRuleRepository() {
+        if (transformRuleRepository == null) {
+            throw new IllegalStateException("Transform rule repository is not initialized");
+        }
+    }
+
+    private String resolveTransformFieldKey(TransformRuleDO rule) {
+        if (rule == null) {
+            return null;
+        }
+        String fieldName = rule.getTargetField();
+        if (fieldName == null || fieldName.trim().length() == 0) {
+            fieldName = rule.getSourceField();
+        }
+        if (fieldName == null || fieldName.trim().length() == 0) {
+            return null;
+        }
+        return fieldName.trim().toLowerCase(Locale.ROOT);
+    }
+
     private void appendLog(long taskId, String logLevel, String message) {
-        ExecutionLogEntry entry = new ExecutionLogEntry();
+        ExecutionLogEntryDO entry = new ExecutionLogEntryDO();
         entry.setTaskId(Long.valueOf(taskId));
         entry.setLogLevel(logLevel);
         entry.setLogMessage(message);
@@ -3316,9 +3529,9 @@ public class DesktopBackendService {
             return;
         }
         try {
-            List<AlertRule> rules = alertRuleRepository.findEnabled();
+            List<AlertRuleDO> rules = alertRuleRepository.findEnabled();
             long now = System.currentTimeMillis();
-            for (AlertRule rule : rules) {
+            for (AlertRuleDO rule : rules) {
                 if (rule == null || rule.getAlertType() == null || !rule.getAlertType().equals(alertType)) {
                     continue;
                 }
@@ -3333,12 +3546,12 @@ public class DesktopBackendService {
                     if (channelId == null) {
                         continue;
                     }
-                    AlertChannel channel = alertChannelRepository.findById(channelId.longValue()).orElse(null);
+                    AlertChannelDO channel = alertChannelRepository.findById(channelId.longValue()).orElse(null);
                     if (channel == null || Boolean.FALSE.equals(channel.getEnabled())) {
                         continue;
                     }
                     String dedupKey = buildDedupKey(alertType, taskId, tableName, channel.getChannelType(), channelId);
-                    AlertDedupState existing = alertDedupStateRepository.findByDedupKey(dedupKey).orElse(null);
+                    AlertDedupStateDO existing = alertDedupStateRepository.findByDedupKey(dedupKey).orElse(null);
                     if (existing != null && existing.getCooldownUntil() != null && existing.getCooldownUntil().longValue() > now) {
                         continue;
                     }
@@ -3346,7 +3559,7 @@ public class DesktopBackendService {
                     AlertSendResult sendResult = alertSenderService.send(channel,
                             rule.getRuleName(),
                             content);
-                    AlertHistoryEntry history = AlertHistoryEntry.builder()
+                    AlertHistoryEntryDO history = AlertHistoryEntryDO.builder()
                             .alertId("alert-" + now + "-" + Math.abs((dedupKey + content).hashCode()))
                             .ruleId(rule.getId())
                             .alertType(alertType)
@@ -3364,7 +3577,7 @@ public class DesktopBackendService {
                             .build();
                     alertHistoryRepository.save(history);
 
-                    AlertDedupState dedupState = AlertDedupState.builder()
+                    AlertDedupStateDO dedupState = AlertDedupStateDO.builder()
                             .dedupKey(dedupKey)
                             .ruleId(rule.getId())
                             .alertType(alertType)
@@ -3387,7 +3600,7 @@ public class DesktopBackendService {
         }
     }
 
-    private String renderAlertContent(AlertRule rule, String alertContent, Long taskId, String runId, String tableName) {
+    private String renderAlertContent(AlertRuleDO rule, String alertContent, Long taskId, String runId, String tableName) {
         String template = rule == null ? null : rule.getAlertContentTemplate();
         if (template == null || template.trim().length() == 0) {
             return alertContent;
@@ -3400,7 +3613,7 @@ public class DesktopBackendService {
         return rendered;
     }
 
-    private int safeCooldownSeconds(AlertRule rule) {
+    private int safeCooldownSeconds(AlertRuleDO rule) {
         if (rule == null || rule.getCooldownSeconds() == null || rule.getCooldownSeconds().intValue() <= 0) {
             return DEFAULT_ALERT_COOLDOWN_SECONDS;
         }
@@ -3435,11 +3648,11 @@ public class DesktopBackendService {
         return result;
     }
 
-    private AlertChannel sanitizeAlertChannel(AlertChannel channel) {
+    private AlertChannelDO sanitizeAlertChannel(AlertChannelDO channel) {
         if (channel == null) {
             return null;
         }
-        AlertChannel sanitized = new AlertChannel();
+        AlertChannelDO sanitized = new AlertChannelDO();
         sanitized.setId(channel.getId());
         sanitized.setChannelName(channel.getChannelName());
         sanitized.setChannelType(channel.getChannelType());
@@ -3457,7 +3670,7 @@ public class DesktopBackendService {
         return sanitized;
     }
 
-    private void mergeAlertChannelSecrets(AlertChannel target, AlertChannel existing) {
+    private void mergeAlertChannelSecrets(AlertChannelDO target, AlertChannelDO existing) {
         if (target == null || existing == null) {
             return;
         }
@@ -3487,7 +3700,7 @@ public class DesktopBackendService {
         return value == null || value.trim().length() == 0;
     }
 
-    private void captureDatasourceConnectionMetric(final DatasourceConfig config, final ConnectionTestResult result) {
+    private void captureDatasourceConnectionMetric(final DatasourceConfigDO config, final ConnectionTestResultVO result) {
         if (monitoringRepository == null || config == null || config.getId() == null || result == null) {
             return;
         }
@@ -3496,7 +3709,7 @@ public class DesktopBackendService {
             public void run() {
                 try {
                     long now = System.currentTimeMillis();
-                    Optional<DatasourceConnectionMetric> latest = monitoringRepository
+                    Optional<DatasourceConnectionMetricDO> latest = monitoringRepository
                             .findLatestDatasourceConnectionMetricByDatasourceId(config.getId().longValue());
                     int sampleCount = latest.isPresent() ? 2 : 1;
                     double totalCost = result.getCostMillis();
@@ -3508,7 +3721,7 @@ public class DesktopBackendService {
                     if (latest.isPresent() && latest.get().getAverageTestConnectionMillis() != null) {
                         totalCost += latest.get().getAverageTestConnectionMillis().doubleValue();
                     }
-                    DatasourceConnectionMetric metric = DatasourceConnectionMetric.builder()
+                    DatasourceConnectionMetricDO metric = DatasourceConnectionMetricDO.builder()
                             .datasourceId(config.getId())
                             .connectionStatus(result.isSuccess() ? "SUCCESS" : "FAILED")
                             .lastSuccessTime(lastSuccessTime)
@@ -3526,19 +3739,19 @@ public class DesktopBackendService {
         });
     }
 
-    private void captureTaskRunMetric(final SyncTask task, final String runId, final String errorMessage) {
+    private void captureTaskRunMetric(final SyncTaskDO task, final String runId, final String errorMessage) {
         if (monitoringRepository == null || task == null || task.getId() == null) {
             return;
         }
-        final SyncTask metricTask = copyTask(task);
+        final SyncTaskDO metricTask = copyTask(task);
         submitMonitoringWrite(new Runnable() {
             @Override
             public void run() {
                 try {
                     long now = System.currentTimeMillis();
-                    TaskRunMetricSummary summary = monitoringRepository.summarizeTaskMetricsForToday(startOfDay(now),
+                    TaskRunMetricSummaryVO summary = monitoringRepository.summarizeTaskMetricsForToday(startOfDay(now),
                             startOfDay(now) + 24L * 60L * 60L * 1000L);
-                    TaskRunMetric metric = TaskRunMetric.builder()
+                    TaskRunMetricDO metric = TaskRunMetricDO.builder()
                             .runId(resolveMetricRunId(runId, metricTask))
                             .taskId(metricTask.getId())
                             .metricTime(Long.valueOf(now))
@@ -3561,7 +3774,7 @@ public class DesktopBackendService {
         });
     }
 
-    private void captureTableRunMetric(final SyncTableRun tableRun, final Integer batchCount, final Integer retryCount,
+    private void captureTableRunMetric(final SyncTableRunDO tableRun, final Integer batchCount, final Integer retryCount,
                                        final String lastCheckpoint, final String lastError) {
         if (monitoringRepository == null || tableRun == null || tableRun.getTaskId() == null
                 || tableRun.getRunId() == null || tableRun.getTaskTableId() == null) {
@@ -3571,7 +3784,7 @@ public class DesktopBackendService {
             @Override
             public void run() {
                 try {
-                    TableRunMetric metric = TableRunMetric.builder()
+                    TableRunMetricDO metric = TableRunMetricDO.builder()
                             .tableTaskId(tableRun.getTaskTableId())
                             .taskId(tableRun.getTaskId())
                             .runId(tableRun.getRunId())
@@ -3604,7 +3817,7 @@ public class DesktopBackendService {
     private int countRunningTasks() {
         try {
             int count = 0;
-            for (SyncTask task : syncTaskRepository.findAll()) {
+            for (SyncTaskDO task : syncTaskRepository.findAll()) {
                 if (task != null && task.getTaskStatus() == SyncTaskStatus.RUNNING) {
                     count++;
                 }
@@ -3626,7 +3839,7 @@ public class DesktopBackendService {
         return calendar.getTimeInMillis();
     }
 
-    private Long resolveLatencyMillis(SyncTask task) {
+    private Long resolveLatencyMillis(SyncTaskDO task) {
         if (task == null || task.getDurationMillis() == null || task.getSyncedRowCount() == null
                 || task.getSyncedRowCount().longValue() <= 0L) {
             return null;
@@ -3634,7 +3847,7 @@ public class DesktopBackendService {
         return Long.valueOf(task.getDurationMillis().longValue() / Math.max(1L, task.getSyncedRowCount().longValue()));
     }
 
-    private String resolveMetricRunId(String runId, SyncTask task) {
+    private String resolveMetricRunId(String runId, SyncTaskDO task) {
         String normalizedRunId = trimToNull(runId);
         if (normalizedRunId != null) {
             return normalizedRunId;
@@ -3645,8 +3858,8 @@ public class DesktopBackendService {
         return "task-" + task.getId();
     }
 
-    private SyncTask copyTask(SyncTask source) {
-        SyncTask copy = new SyncTask();
+    private SyncTaskDO copyTask(SyncTaskDO source) {
+        SyncTaskDO copy = new SyncTaskDO();
         copy.setId(source.getId());
         copy.setTaskName(source.getTaskName());
         copy.setSourceDatasourceId(source.getSourceDatasourceId());
@@ -3669,34 +3882,34 @@ public class DesktopBackendService {
         return copy;
     }
 
-    private SyncTask loadTask(long taskId) throws SQLException {
-        Optional<SyncTask> task = syncTaskRepository.findById(taskId);
+    private SyncTaskDO loadTask(long taskId) throws SQLException {
+        Optional<SyncTaskDO> task = syncTaskRepository.findById(taskId);
         if (!task.isPresent()) {
             throw new SQLException("Sync task not found: " + taskId);
         }
         return applyIncrementalCheckpoint(task.get());
     }
 
-    private DatasourceConfig loadDatasource(long datasourceId, String messagePrefix) throws SQLException {
-        Optional<DatasourceConfig> datasource = datasourceRepository.findById(datasourceId);
+    private DatasourceConfigDO loadDatasource(long datasourceId, String messagePrefix) throws SQLException {
+        Optional<DatasourceConfigDO> datasource = datasourceRepository.findById(datasourceId);
         if (!datasource.isPresent()) {
             throw new SQLException(messagePrefix + datasourceId);
         }
         return datasource.get();
     }
 
-    private SyncTask applyIncrementalCheckpoint(SyncTask task) throws SQLException {
+    private SyncTaskDO applyIncrementalCheckpoint(SyncTaskDO task) throws SQLException {
         if (task == null) {
             return null;
         }
-        Optional<IncrementalSyncCheckpointEntry> checkpoint = incrementalCheckpointRepository.findByTaskId(task.getId().longValue());
+        Optional<IncrementalSyncCheckpointEntryDO> checkpoint = incrementalCheckpointRepository.findByTaskId(task.getId().longValue());
         if (!checkpoint.isPresent()) {
             task.setIncrementalCheckpointMode(null);
             task.setIncrementalCheckpointValue(null);
             task.setIncrementalCheckpointUpdatedAt(null);
             return task;
         }
-        IncrementalSyncCheckpointEntry entry = checkpoint.get();
+        IncrementalSyncCheckpointEntryDO entry = checkpoint.get();
         task.setIncrementalCheckpointMode(entry.getCheckpointMode());
         task.setIncrementalCheckpointValue(entry.getCheckpointValue());
         task.setIncrementalCheckpointUpdatedAt(entry.getUpdatedAt());

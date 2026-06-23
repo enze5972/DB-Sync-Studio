@@ -1,6 +1,6 @@
 package com.dbsyncstudio.core.bootstrap;
 
-import com.dbsyncstudio.store.sqlite.SqliteDatabasePaths;
+import com.dbsyncstudio.store.sqlite.DatabasePaths;
 
 import java.io.File;
 
@@ -10,6 +10,6 @@ import lombok.experimental.UtilityClass;
 public class AppPaths {
 
     public static File databaseFile() {
-        return SqliteDatabasePaths.defaultDatabaseFile();
+        return DatabasePaths.defaultDatabaseFile();
     }
 }

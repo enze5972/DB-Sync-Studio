@@ -1,6 +1,7 @@
 package com.dbsyncstudio.core.alert;
 
-import com.dbsyncstudio.model.alert.AlertChannel;
+import com.dbsyncstudio.model.alert.vo.AlertSendResult;
+import com.dbsyncstudio.model.alert.entity.AlertChannelDO;
 import com.dbsyncstudio.model.alert.AlertChannelType;
 
 import java.util.Properties;
@@ -20,7 +21,7 @@ public class AlertSenderService {
     private static final Logger LOGGER = Logger.getLogger(AlertSenderService.class.getName());
     private static final int DEFAULT_TIMEOUT_MILLIS = 5000;
 
-    public AlertSendResult send(AlertChannel channel, String subject, String content) {
+    public AlertSendResult send(AlertChannelDO channel, String subject, String content) {
         long start = System.currentTimeMillis();
         if (channel == null || channel.getChannelType() == null) {
             return buildResult(false, "Alert channel is missing", start);
@@ -41,7 +42,7 @@ public class AlertSenderService {
         }
     }
 
-    private void sendSmtp(AlertChannel channel, String subject, String content) throws Exception {
+    private void sendSmtp(AlertChannelDO channel, String subject, String content) throws Exception {
         if (channel.getSmtpHost() == null || channel.getSmtpToAddress() == null) {
             throw new IllegalArgumentException("SMTP host or to address is missing");
         }
@@ -66,7 +67,7 @@ public class AlertSenderService {
         Transport.send(message);
     }
 
-    private void sendWebhook(AlertChannel channel, String subject, String content) throws Exception {
+    private void sendWebhook(AlertChannelDO channel, String subject, String content) throws Exception {
         if (channel.getWebhookUrl() == null) {
             throw new IllegalArgumentException("Webhook url is missing");
         }

@@ -171,9 +171,9 @@
           <el-table :data="mappings" border stripe v-loading="loading" :empty-text="selectedTaskId ? '当前没有可保存的映射规则。' : ''">
             <el-table-column prop="sourceColumnName" label="源字段" min-width="180" />
             <el-table-column prop="targetColumnName" label="目标字段" min-width="180" />
-            <el-table-column prop="transformRule" label="转换规则" min-width="180">
+            <el-table-column prop="transformRule" label="转换规则" min-width="200">
               <template #default="{ row }">
-                {{ row.transformRule || '—' }}
+                {{ row.transformRule || '未配置' }}
               </template>
             </el-table-column>
             <el-table-column prop="defaultValue" label="默认值" min-width="140">
@@ -193,10 +193,11 @@
                 <el-tag :type="mappingRowStatusTagType(row)" effect="light">{{ mappingRowStatusLabel(row) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="220" fixed="right">
+            <el-table-column label="操作" width="320" fixed="right">
               <template #default="{ row }">
                 <el-space>
                   <el-button size="small" @click="editMapping(row)">编辑</el-button>
+                  <el-button size="small" type="primary" :disabled="!row.id" @click="openTransformDrawer(row)">配置转换</el-button>
                   <el-button size="small" type="danger" @click="removeMapping(row)">删除</el-button>
                 </el-space>
               </template>
@@ -358,12 +359,13 @@
         </el-form-item>
 
         <el-form-item label="转换规则">
-          <el-input
-            v-model="form.transformRule"
-            type="textarea"
-            :rows="4"
-            placeholder="例如：trim、toUpperCase、日期格式转换等"
-          />
+          <el-input :model-value="form.transformRule || '未配置'" disabled />
+        </el-form-item>
+
+        <el-form-item label="">
+          <div class="field-mapping-workbench__rule-hint">
+            转换规则请在保存字段映射后，通过表格中的「配置转换」维护。
+          </div>
         </el-form-item>
       </el-form>
 
@@ -374,6 +376,15 @@
         </el-space>
       </template>
     </el-dialog>
+
+    <TransformRuleDrawer
+      v-model:visible="transformDrawerVisible"
+      :task="currentTask"
+      :mapping="activeTransformMapping"
+      :source-schemas="sourceSchemas"
+      :target-schemas="targetSchemas"
+      @saved="handleTransformRulesSaved"
+    />
   </div>
 </template>
 
@@ -381,8 +392,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteFieldMapping, listFieldMappings, listTasks, saveFieldMapping, scanMetadata, suggestFieldMappings } from '../services/backend'
+import { deleteFieldMapping, deleteTransformRule, listFieldMappings, listTasks, listTransformRules, saveFieldMapping, scanMetadata, suggestFieldMappings } from '../services/backend'
 import CreatableSelect from '../components/CreatableSelect.vue'
+import TransformRuleDrawer from '../components/TransformRuleDrawer.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -405,6 +417,8 @@ const sourceSchemaOptions = ref([])
 const targetSchemaOptions = ref([])
 const sourceTableOptions = ref([])
 const targetTableOptions = ref([])
+const transformDrawerVisible = ref(false)
+const activeTransformMapping = ref(null)
 
 const form = reactive(createEmptyForm())
 
@@ -651,20 +665,28 @@ function mappingRowStatusLabel(row) {
   if (row.ignored) {
     return '已忽略'
   }
-  if (row.defaultValue || row.transformRule) {
-    return '已配置'
+  const summary = normalizeTransformRuleSummary(row.transformRule)
+  if (summary === '未配置') {
+    return '待配置'
   }
-  return '待确认'
+  if (summary === '已停用') {
+    return '已停用'
+  }
+  return '已配置'
 }
 
 function mappingRowStatusTagType(row) {
   if (row.ignored) {
     return 'info'
   }
-  if (row.defaultValue || row.transformRule) {
-    return 'success'
+  const summary = normalizeTransformRuleSummary(row.transformRule)
+  if (summary === '未配置') {
+    return 'warning'
   }
-  return 'warning'
+  if (summary === '已停用') {
+    return 'info'
+  }
+  return 'success'
 }
 
 const taskAvailabilityLabel = computed(function () {
@@ -805,7 +827,9 @@ async function loadMappings(taskId) {
   }
   loading.value = true
   try {
-    mappings.value = await listFieldMappings(taskId)
+    const loadedMappings = await listFieldMappings(taskId)
+    mappings.value = loadedMappings
+    await hydrateTransformRuleSummaries(taskId, mappings.value)
   } catch (error) {
     ElMessage.error(error.message || '加载映射失败')
   } finally {
@@ -914,6 +938,33 @@ async function removeMapping(row) {
     return
   }
   try {
+    if (row.id) {
+      let taskRules = []
+      let transformRules = []
+      try {
+        taskRules = await listTransformRules({
+          taskId: Number(selectedTaskId.value)
+        })
+      } catch (error) {
+        taskRules = []
+      }
+      try {
+        transformRules = await listTransformRules({
+          taskId: Number(selectedTaskId.value),
+          fieldMappingId: row.id
+        })
+      } catch (error) {
+        transformRules = []
+      }
+      const allRules = mergeTransformRuleLists(transformRules || [], (taskRules || []).filter(function (rule) {
+        return matchesMappingRule(rule, row)
+      }))
+      for (let i = 0; i < allRules.length; i += 1) {
+        if (allRules[i] && allRules[i].id) {
+          await deleteTransformRule(allRules[i].id)
+        }
+      }
+    }
     await deleteFieldMapping(row.id)
     ElMessage.success('字段映射已删除')
     await loadMappings(selectedTaskId.value)
@@ -1008,6 +1059,144 @@ function normalizeForm() {
     defaultValue: form.defaultValue,
     transformRule: form.transformRule
   }
+}
+
+function openTransformDrawer(row) {
+  if (!row || !row.id) {
+    ElMessage.warning('请先保存字段映射')
+    return
+  }
+  activeTransformMapping.value = row
+  transformDrawerVisible.value = true
+}
+
+async function handleTransformRulesSaved(payload) {
+  if (!selectedTaskId.value) {
+    return
+  }
+  await loadMappings(selectedTaskId.value)
+  await loadSuggestions(selectedTaskId.value)
+  if (payload && payload.mappingId && activeTransformMapping.value && activeTransformMapping.value.id === payload.mappingId) {
+    activeTransformMapping.value.transformRule = payload.summary || '未配置'
+  }
+}
+
+async function hydrateTransformRuleSummaries(taskId, mappingRows) {
+  if (!taskId || !mappingRows || mappingRows.length === 0) {
+    return
+  }
+  let taskLevelRules = []
+  try {
+    taskLevelRules = await listTransformRules({
+      taskId: taskId
+    })
+  } catch (error) {
+    taskLevelRules = []
+  }
+  const tasks = []
+  for (let i = 0; i < mappingRows.length; i += 1) {
+    const row = mappingRows[i]
+    if (!row || !row.id) {
+      row.transformRule = '未配置'
+      continue
+    }
+    tasks.push(loadTransformRuleSummary(taskId, row, taskLevelRules).catch(function () {
+      return {
+        row: row,
+        value: normalizeTransformRuleSummary(row.transformRule)
+      }
+    }))
+  }
+  const summaries = await Promise.all(tasks)
+  for (let j = 0; j < summaries.length; j += 1) {
+    const summary = summaries[j]
+    if (summary && summary.row) {
+      summary.row.transformRule = summary.value
+    }
+  }
+}
+
+async function loadTransformRuleSummary(taskId, row, taskLevelRules) {
+  const fieldRules = await listTransformRules({
+    taskId: taskId,
+    fieldMappingId: row.id
+  })
+  const matchedTaskRules = (taskLevelRules || []).filter(function (rule) {
+    return matchesMappingRule(rule, row)
+  })
+  const merged = mergeTransformRuleLists(fieldRules || [], matchedTaskRules || [])
+  return {
+    row: row,
+    value: normalizeTransformRuleSummary(buildTransformRuleSummaryFromRules(merged))
+  }
+}
+
+function matchesMappingRule(rule, row) {
+  if (!rule || !row) {
+    return false
+  }
+  if (rule.fieldMappingId && row.id && Number(rule.fieldMappingId) === Number(row.id)) {
+    return true
+  }
+  return normalizeText(rule.sourceField) === normalizeText(row.sourceColumnName) &&
+    normalizeText(rule.targetField) === normalizeText(row.targetColumnName)
+}
+
+function mergeTransformRuleLists(leftRules, rightRules) {
+  const seen = {}
+  const result = []
+  ;(leftRules || []).forEach(function (item) {
+    if (item && item.id != null && !seen[item.id]) {
+      seen[item.id] = true
+      result.push(item)
+    }
+  })
+  ;(rightRules || []).forEach(function (item) {
+    if (item && item.id != null && !seen[item.id]) {
+      seen[item.id] = true
+      result.push(item)
+    }
+  })
+  result.sort(function (left, right) {
+    const leftOrder = left && left.transformOrder != null ? Number(left.transformOrder) : 0
+    const rightOrder = right && right.transformOrder != null ? Number(right.transformOrder) : 0
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder
+    }
+    const leftId = left && left.id != null ? Number(left.id) : 0
+    const rightId = right && right.id != null ? Number(right.id) : 0
+    return leftId - rightId
+  })
+  return result
+}
+
+function buildTransformRuleSummaryFromRules(rules) {
+  if (!rules || rules.length === 0) {
+    return '未配置'
+  }
+  const activeRules = rules.filter(function (item) {
+    return item && item.enabled !== false
+  })
+  if (activeRules.length === 0) {
+    return '已停用'
+  }
+  if (activeRules.length <= 2) {
+    return activeRules.map(function (item) {
+      return item.transformType
+    }).join(' + ')
+  }
+  return '已配置 ' + rules.length + ' 条'
+}
+
+function normalizeTransformRuleSummary(value) {
+  if (!value || String(value).trim().length === 0) {
+    return '未配置'
+  }
+  return String(value)
+}
+
+function normalizeText(value) {
+  return value == null ? '' : String(value).trim().toLowerCase()
 }
 
 function confidenceTagType(value) {

@@ -484,6 +484,11 @@
             <el-table v-if="showMappingPreview && mappings.length" :data="mappings.slice(0, 8)" border stripe>
               <el-table-column prop="sourceColumnName" label="源字段" min-width="150" />
               <el-table-column prop="targetColumnName" label="目标字段" min-width="150" />
+              <el-table-column prop="transformRule" label="转换规则" min-width="160">
+                <template #default="{ row }">
+                  {{ row.transformRule || '待配置' }}
+                </template>
+              </el-table-column>
               <el-table-column label="置信度" width="100">
                 <template #default="{ row }">
                   {{ formatConfidence(row.confidence) }}
@@ -497,6 +502,9 @@
             </el-table>
             <div v-else class="wizard-empty-state wizard-empty-state--summary">
               完成字段映射后，这里将展示源字段、目标字段、置信度和忽略状态。
+            </div>
+            <div class="wizard-note">
+              字段级转换规则请在保存任务后，到「字段映射」页中的“配置转换”里继续维护。
             </div>
           </div>
         </div>

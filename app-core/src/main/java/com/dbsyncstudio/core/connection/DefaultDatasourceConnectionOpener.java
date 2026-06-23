@@ -1,6 +1,6 @@
 package com.dbsyncstudio.core.connection;
 
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -8,7 +8,7 @@ import java.sql.SQLException;
 public class DefaultDatasourceConnectionOpener implements DatasourceConnectionOpener {
 
     @Override
-    public Connection open(DatasourceConfig config) throws SQLException {
+    public Connection open(DatasourceConfigDO config) throws SQLException {
         return JdbcConnectionSupport.openConnection(config);
     }
 }

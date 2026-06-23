@@ -1,6 +1,6 @@
 package com.dbsyncstudio.core.scheduler;
 
-import com.dbsyncstudio.model.sync.SyncTask;
+import com.dbsyncstudio.model.sync.entity.SyncTaskDO;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -11,7 +11,7 @@ public final class TaskScheduleCalculator {
     private TaskScheduleCalculator() {
     }
 
-    public static long computeNextRunAt(SyncTask task, long nowMillis) {
+    public static long computeNextRunAt(SyncTaskDO task, long nowMillis) {
         if (task == null || task.getScheduleEnabled() == null || !task.getScheduleEnabled().booleanValue()) {
             return 0L;
         }

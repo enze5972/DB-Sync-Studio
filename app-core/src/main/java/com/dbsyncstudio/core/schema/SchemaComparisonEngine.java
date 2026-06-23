@@ -1,12 +1,12 @@
 package com.dbsyncstudio.core.schema;
 
-import com.dbsyncstudio.model.metadata.ColumnMetadata;
-import com.dbsyncstudio.model.metadata.IndexMetadata;
-import com.dbsyncstudio.model.metadata.TableMetadata;
-import com.dbsyncstudio.model.schema.SchemaComparisonRequest;
-import com.dbsyncstudio.model.schema.SchemaComparisonResult;
+import com.dbsyncstudio.model.metadata.entity.ColumnMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.IndexMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.TableMetadataDO;
+import com.dbsyncstudio.model.schema.dto.SchemaComparisonRequestDTO;
+import com.dbsyncstudio.model.schema.vo.SchemaComparisonResultVO;
 import com.dbsyncstudio.model.schema.SchemaComparisonType;
-import com.dbsyncstudio.model.schema.SchemaDiffEntry;
+import com.dbsyncstudio.model.schema.entity.SchemaDiffEntryDO;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -16,14 +16,14 @@ import java.util.Map;
 
 public class SchemaComparisonEngine {
 
-    public SchemaComparisonResult compare(SchemaComparisonRequest request, TableMetadata sourceTable, TableMetadata targetTable,
+    public SchemaComparisonResultVO compare(SchemaComparisonRequestDTO request, TableMetadataDO sourceTable, TableMetadataDO targetTable,
                                           DatabaseDialect dialect) {
         SchemaSqlDialect sqlDialect = new SchemaSqlDialect(dialect);
-        List<SchemaDiffEntry> diffEntries = new ArrayList<SchemaDiffEntry>();
+        List<SchemaDiffEntryDO> diffEntries = new ArrayList<SchemaDiffEntryDO>();
         List<String> sqlList = new ArrayList<String>();
 
         if (sourceTable == null) {
-            return SchemaComparisonResult.builder()
+            return SchemaComparisonResultVO.builder()
                     .sourceTable(null)
                     .targetTable(targetTable)
                     .diffEntries(diffEntries)
@@ -33,7 +33,7 @@ public class SchemaComparisonEngine {
 
         if (targetTable == null) {
             String createTableSql = sqlDialect.renderCreateTable(sourceTable);
-            diffEntries.add(SchemaDiffEntry.builder()
+            diffEntries.add(SchemaDiffEntryDO.builder()
                     .diffType(SchemaComparisonType.MISSING_COLUMN)
                     .sourceColumnName(null)
                     .targetColumnName(null)
@@ -43,7 +43,7 @@ public class SchemaComparisonEngine {
                     .suggestedSql(createTableSql)
                     .build());
             sqlList.add(createTableSql);
-            return SchemaComparisonResult.builder()
+            return SchemaComparisonResultVO.builder()
                     .sourceTable(sourceTable)
                     .targetTable(null)
                     .diffEntries(diffEntries)
@@ -51,9 +51,9 @@ public class SchemaComparisonEngine {
                     .build();
         }
 
-        Map<String, ColumnMetadata> targetColumnsByName = new LinkedHashMap<String, ColumnMetadata>();
+        Map<String, ColumnMetadataDO> targetColumnsByName = new LinkedHashMap<String, ColumnMetadataDO>();
         if (targetTable != null && targetTable.getColumns() != null) {
-            for (ColumnMetadata targetColumn : targetTable.getColumns()) {
+            for (ColumnMetadataDO targetColumn : targetTable.getColumns()) {
                 if (targetColumn != null && targetColumn.getName() != null) {
                     targetColumnsByName.put(normalize(targetColumn.getName()), targetColumn);
                 }
@@ -61,11 +61,11 @@ public class SchemaComparisonEngine {
         }
 
         if (sourceTable != null && sourceTable.getColumns() != null) {
-            for (ColumnMetadata sourceColumn : sourceTable.getColumns()) {
-                ColumnMetadata targetColumn = targetColumnsByName.remove(normalize(sourceColumn.getName()));
+            for (ColumnMetadataDO sourceColumn : sourceTable.getColumns()) {
+                ColumnMetadataDO targetColumn = targetColumnsByName.remove(normalize(sourceColumn.getName()));
                 if (targetColumn == null) {
                     String sql = sqlDialect.renderAddColumn(targetTable, sourceColumn);
-                    diffEntries.add(SchemaDiffEntry.builder()
+                    diffEntries.add(SchemaDiffEntryDO.builder()
                             .diffType(SchemaComparisonType.MISSING_COLUMN)
                             .sourceColumnName(sourceColumn.getName())
                             .sourceColumn(sourceColumn)
@@ -80,8 +80,8 @@ public class SchemaComparisonEngine {
             }
         }
 
-        for (ColumnMetadata extraColumn : targetColumnsByName.values()) {
-            diffEntries.add(SchemaDiffEntry.builder()
+        for (ColumnMetadataDO extraColumn : targetColumnsByName.values()) {
+            diffEntries.add(SchemaDiffEntryDO.builder()
                     .diffType(SchemaComparisonType.EXTRA_COLUMN)
                     .targetColumnName(extraColumn.getName())
                     .targetColumn(extraColumn)
@@ -91,7 +91,7 @@ public class SchemaComparisonEngine {
 
         collectIndexDiffs(sourceTable, targetTable, sqlDialect, diffEntries, sqlList);
 
-        return SchemaComparisonResult.builder()
+        return SchemaComparisonResultVO.builder()
                 .sourceTable(sourceTable)
                 .targetTable(targetTable)
                 .diffEntries(diffEntries)
@@ -99,9 +99,9 @@ public class SchemaComparisonEngine {
                 .build();
     }
 
-    private void collectColumnDiffs(TableMetadata sourceTable, TableMetadata targetTable, ColumnMetadata sourceColumn,
-                                    ColumnMetadata targetColumn, SchemaSqlDialect sqlDialect,
-                                    List<SchemaDiffEntry> diffEntries, List<String> sqlList) {
+    private void collectColumnDiffs(TableMetadataDO sourceTable, TableMetadataDO targetTable, ColumnMetadataDO sourceColumn,
+                                    ColumnMetadataDO targetColumn, SchemaSqlDialect sqlDialect,
+                                    List<SchemaDiffEntryDO> diffEntries, List<String> sqlList) {
         if (!safeEquals(sourceColumn.getDataType(), targetColumn.getDataType())) {
             diffEntries.add(buildColumnDiff(SchemaComparisonType.TYPE_DIFF, sourceColumn, targetColumn,
                     "字段类型不同: " + sourceColumn.getName() + " -> " + sourceColumn.getDataType() + " / " + targetColumn.getDataType(), null));
@@ -125,23 +125,23 @@ public class SchemaComparisonEngine {
         }
     }
 
-    private void collectIndexDiffs(TableMetadata sourceTable, TableMetadata targetTable, SchemaSqlDialect sqlDialect,
-                                   List<SchemaDiffEntry> diffEntries, List<String> sqlList) {
-        List<IndexMetadata> sourceIndexes = sourceTable == null || sourceTable.getIndexes() == null
-                ? new ArrayList<IndexMetadata>()
+    private void collectIndexDiffs(TableMetadataDO sourceTable, TableMetadataDO targetTable, SchemaSqlDialect sqlDialect,
+                                   List<SchemaDiffEntryDO> diffEntries, List<String> sqlList) {
+        List<IndexMetadataDO> sourceIndexes = sourceTable == null || sourceTable.getIndexes() == null
+                ? new ArrayList<IndexMetadataDO>()
                 : sourceTable.getIndexes();
-        List<IndexMetadata> targetIndexes = targetTable == null || targetTable.getIndexes() == null
-                ? new ArrayList<IndexMetadata>()
+        List<IndexMetadataDO> targetIndexes = targetTable == null || targetTable.getIndexes() == null
+                ? new ArrayList<IndexMetadataDO>()
                 : targetTable.getIndexes();
 
-        for (IndexMetadata sourceIndex : sourceIndexes) {
+        for (IndexMetadataDO sourceIndex : sourceIndexes) {
             if (sourceIndex == null || sourceIndex.getColumnNames() == null || sourceIndex.getColumnNames().isEmpty()) {
                 continue;
             }
-            IndexMetadata matched = SchemaTableUtils.findIndexByColumns(targetTable, sourceIndex.getColumnNames());
+            IndexMetadataDO matched = SchemaTableUtils.findIndexByColumns(targetTable, sourceIndex.getColumnNames());
             if (matched == null) {
                 String sql = sqlDialect.renderCreateIndex(sourceTable, sourceIndex);
-                diffEntries.add(SchemaDiffEntry.builder()
+                diffEntries.add(SchemaDiffEntryDO.builder()
                         .diffType(SchemaComparisonType.INDEX_DIFF)
                         .description("目标表缺少索引: " + sourceIndex.getName())
                         .suggestedSql(sql)
@@ -150,13 +150,13 @@ public class SchemaComparisonEngine {
             }
         }
 
-        for (IndexMetadata targetIndex : targetIndexes) {
+        for (IndexMetadataDO targetIndex : targetIndexes) {
             if (targetIndex == null || targetIndex.getColumnNames() == null || targetIndex.getColumnNames().isEmpty()) {
                 continue;
             }
-            IndexMetadata matched = SchemaTableUtils.findIndexByColumns(sourceTable, targetIndex.getColumnNames());
+            IndexMetadataDO matched = SchemaTableUtils.findIndexByColumns(sourceTable, targetIndex.getColumnNames());
             if (matched == null) {
-                diffEntries.add(SchemaDiffEntry.builder()
+                diffEntries.add(SchemaDiffEntryDO.builder()
                         .diffType(SchemaComparisonType.INDEX_DIFF)
                         .description("目标表存在额外索引: " + targetIndex.getName())
                         .build());
@@ -164,9 +164,9 @@ public class SchemaComparisonEngine {
         }
     }
 
-    private SchemaDiffEntry buildColumnDiff(SchemaComparisonType diffType, ColumnMetadata sourceColumn, ColumnMetadata targetColumn,
+    private SchemaDiffEntryDO buildColumnDiff(SchemaComparisonType diffType, ColumnMetadataDO sourceColumn, ColumnMetadataDO targetColumn,
                                             String description, String sql) {
-        return SchemaDiffEntry.builder()
+        return SchemaDiffEntryDO.builder()
                 .diffType(diffType)
                 .sourceColumnName(sourceColumn == null ? null : sourceColumn.getName())
                 .targetColumnName(targetColumn == null ? null : targetColumn.getName())

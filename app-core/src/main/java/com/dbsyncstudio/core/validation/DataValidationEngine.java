@@ -5,16 +5,18 @@ import com.dbsyncstudio.core.schema.DatabaseDialect;
 import com.dbsyncstudio.core.schema.SchemaComparisonEngine;
 import com.dbsyncstudio.core.schema.SchemaSqlDialect;
 import com.dbsyncstudio.core.schema.SchemaTableUtils;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
-import com.dbsyncstudio.model.metadata.ColumnMetadata;
-import com.dbsyncstudio.model.metadata.SchemaMetadata;
-import com.dbsyncstudio.model.metadata.TableMetadata;
+import com.dbsyncstudio.core.transform.TransformContext;
+import com.dbsyncstudio.core.transform.TransformPlan;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
+import com.dbsyncstudio.model.metadata.entity.ColumnMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.SchemaMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.TableMetadataDO;
 import com.dbsyncstudio.model.validation.RepairType;
-import com.dbsyncstudio.model.validation.ValidationDifference;
+import com.dbsyncstudio.model.validation.entity.ValidationDifferenceDO;
 import com.dbsyncstudio.model.validation.ValidationMode;
-import com.dbsyncstudio.model.validation.ValidationRequest;
-import com.dbsyncstudio.model.validation.ValidationResult;
-import com.dbsyncstudio.model.validation.ValidationRun;
+import com.dbsyncstudio.model.validation.dto.ValidationRequestDTO;
+import com.dbsyncstudio.model.validation.vo.ValidationResultVO;
+import com.dbsyncstudio.model.validation.entity.ValidationRunDO;
 import com.dbsyncstudio.model.validation.ValidationSampleMode;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,12 +62,16 @@ public class DataValidationEngine {
         this.objectMapper = new ObjectMapper();
     }
 
-    public ValidationResult validate(ValidationRequest request) throws SQLException {
+    public ValidationResultVO validate(ValidationRequestDTO request) throws SQLException {
+        return validate(request, null);
+    }
+
+    public ValidationResultVO validate(ValidationRequestDTO request, TransformPlan transformPlan) throws SQLException {
         validateRequest(request);
         String runId = normalizeRunId(request.getRunId(), request.getTaskId());
         request.setRunId(runId);
         long startedAt = System.currentTimeMillis();
-        ValidationRun run = ValidationRun.builder()
+        ValidationRunDO run = ValidationRunDO.builder()
                 .taskId(request.getTaskId())
                 .runId(runId)
                 .validationMethod(request.getValidationMode().name())
@@ -78,14 +84,14 @@ public class DataValidationEngine {
                 .createdAt(Long.valueOf(startedAt))
                 .build();
 
-        ValidationResult result = ValidationResult.builder()
+        ValidationResultVO result = ValidationResultVO.builder()
                 .run(run)
                 .build();
 
         try (Connection sourceConnection = connectionOpener.open(request.getSourceDatasource());
              Connection targetConnection = connectionOpener.open(request.getTargetDatasource())) {
-            TableMetadata sourceTable = findTable(metadataScanner.scan(sourceConnection), request.getSourceSchemaName(), request.getSourceTableName());
-            TableMetadata targetTable = findTable(metadataScanner.scan(targetConnection), request.getTargetSchemaName(), request.getTargetTableName());
+            TableMetadataDO sourceTable = findTable(metadataScanner.scan(sourceConnection), request.getSourceSchemaName(), request.getSourceTableName());
+            TableMetadataDO targetTable = findTable(metadataScanner.scan(targetConnection), request.getTargetSchemaName(), request.getTargetTableName());
             if (sourceTable == null) {
                 throw new SQLException("Source table not found: " + request.getSourceTableName());
             }
@@ -106,7 +112,7 @@ public class DataValidationEngine {
             run.setSourceRowCount(Long.valueOf(sourceRowCount));
             run.setTargetRowCount(Long.valueOf(targetRowCount));
 
-            List<ValidationDifference> differences = new ArrayList<ValidationDifference>();
+            List<ValidationDifferenceDO> differences = new ArrayList<ValidationDifferenceDO>();
             if (request.getValidationMode() == ValidationMode.ROW_COUNT) {
                 if (sourceRowCount != targetRowCount) {
                     differences.add(buildCountDifference(run, sourceRowCount, targetRowCount));
@@ -115,10 +121,10 @@ public class DataValidationEngine {
                 run.setInconsistentCount(Long.valueOf(0L));
             } else if (request.getValidationMode() == ValidationMode.PRIMARY_KEY_EXISTS) {
                 validatePrimaryKeyExistence(request, sourceConnection, targetConnection, sourceTable, targetTable,
-                        primaryKeyColumns, sourceDialect, targetDialect, differences);
+                        primaryKeyColumns, sourceDialect, targetDialect, differences, transformPlan);
             } else if (request.getValidationMode() == ValidationMode.SAMPLE || request.getValidationMode() == ValidationMode.HASH) {
                 validateRowSamples(request, sourceConnection, targetConnection, sourceTable, targetTable,
-                        primaryKeyColumns, sourceDialect, targetDialect, differences);
+                        primaryKeyColumns, sourceDialect, targetDialect, differences, transformPlan);
                 run.setMissingCount(Long.valueOf(countDifferences(differences, "MISSING_TARGET")));
                 run.setInconsistentCount(Long.valueOf(countDifferences(differences, "INCONSISTENT_ROW")));
                 run.setSampleCount(Long.valueOf(differences.size()));
@@ -145,10 +151,10 @@ public class DataValidationEngine {
         }
     }
 
-    private void validatePrimaryKeyExistence(ValidationRequest request, Connection sourceConnection, Connection targetConnection,
-                                             TableMetadata sourceTable, TableMetadata targetTable, List<String> primaryKeyColumns,
+    private void validatePrimaryKeyExistence(ValidationRequestDTO request, Connection sourceConnection, Connection targetConnection,
+                                             TableMetadataDO sourceTable, TableMetadataDO targetTable, List<String> primaryKeyColumns,
                                              SchemaSqlDialect sourceDialect, SchemaSqlDialect targetDialect,
-                                             List<ValidationDifference> differences) throws SQLException {
+                                             List<ValidationDifferenceDO> differences, TransformPlan transformPlan) throws SQLException {
         int pageSize = DEFAULT_PAGE_SIZE;
         long sourceCount = countRows(sourceConnection, sourceTable, sourceDialect, request);
         long totalPages = (sourceCount + pageSize - 1L) / pageSize;
@@ -156,15 +162,16 @@ public class DataValidationEngine {
             List<Map<String, Object>> sourceRows = loadRows(sourceConnection, sourceTable, sourceDialect, request,
                     primaryKeyColumns, pageSize, pageIndex * pageSize);
             for (Map<String, Object> sourceRow : sourceRows) {
-                Map<String, Object> primaryKey = extractPrimaryKey(sourceRow, primaryKeyColumns);
+                Map<String, Object> transformedSourceRow = transformRow(request, sourceRow, transformPlan);
+                Map<String, Object> primaryKey = extractPrimaryKey(transformedSourceRow, primaryKeyColumns);
                 Map<String, Object> targetRow = findRowByPrimaryKey(targetConnection, targetTable, targetDialect, primaryKeyColumns, primaryKey);
                 if (targetRow == null) {
-                    differences.add(ValidationDifference.builder()
+                    differences.add(ValidationDifferenceDO.builder()
                             .taskId(request.getTaskId())
                             .runId(request.getRunId())
                             .differenceType("MISSING_TARGET")
                             .primaryKeyJson(toJson(primaryKey))
-                            .sourceRowJson(toJson(sourceRow))
+                            .sourceRowJson(toJson(transformedSourceRow))
                             .suggestedRepairType(RepairType.INSERT_MISSING.name())
                             .status("OPEN")
                             .createdAt(Long.valueOf(System.currentTimeMillis()))
@@ -174,25 +181,26 @@ public class DataValidationEngine {
         }
     }
 
-    private void validateRowSamples(ValidationRequest request, Connection sourceConnection, Connection targetConnection,
-                                    TableMetadata sourceTable, TableMetadata targetTable, List<String> primaryKeyColumns,
+    private void validateRowSamples(ValidationRequestDTO request, Connection sourceConnection, Connection targetConnection,
+                                    TableMetadataDO sourceTable, TableMetadataDO targetTable, List<String> primaryKeyColumns,
                                     SchemaSqlDialect sourceDialect, SchemaSqlDialect targetDialect,
-                                    List<ValidationDifference> differences) throws SQLException {
+                                    List<ValidationDifferenceDO> differences, TransformPlan transformPlan) throws SQLException {
         int sampleCount = request.getSampleCount() == null || request.getSampleCount().intValue() <= 0
                 ? DEFAULT_SAMPLE_COUNT
                 : request.getSampleCount().intValue();
         List<Map<String, Object>> sampledRows = sampleRows(request, sourceConnection, sourceTable, sourceDialect, primaryKeyColumns, sampleCount);
         List<String> comparisonColumns = resolveComparisonColumns(sourceTable, request);
         for (Map<String, Object> sourceRow : sampledRows) {
-            Map<String, Object> primaryKey = extractPrimaryKey(sourceRow, primaryKeyColumns);
+            Map<String, Object> transformedSourceRow = transformRow(request, sourceRow, transformPlan);
+            Map<String, Object> primaryKey = extractPrimaryKey(transformedSourceRow, primaryKeyColumns);
             Map<String, Object> targetRow = findRowByPrimaryKey(targetConnection, targetTable, targetDialect, primaryKeyColumns, primaryKey);
             if (targetRow == null) {
-                differences.add(ValidationDifference.builder()
+                differences.add(ValidationDifferenceDO.builder()
                         .taskId(request.getTaskId())
                         .runId(request.getRunId())
                         .differenceType("MISSING_TARGET")
                         .primaryKeyJson(toJson(primaryKey))
-                        .sourceRowJson(toJson(sourceRow))
+                        .sourceRowJson(toJson(transformedSourceRow))
                         .suggestedRepairType(RepairType.INSERT_MISSING.name())
                         .status("OPEN")
                         .createdAt(Long.valueOf(System.currentTimeMillis()))
@@ -201,25 +209,25 @@ public class DataValidationEngine {
             }
 
             if (request.getValidationMode() == ValidationMode.HASH) {
-                String sourceHash = hashRow(sourceRow, comparisonColumns, request.getHashAlgorithm());
+                String sourceHash = hashRow(transformedSourceRow, comparisonColumns, request.getHashAlgorithm());
                 String targetHash = hashRow(targetRow, comparisonColumns, request.getHashAlgorithm());
                 if (!sourceHash.equals(targetHash)) {
-                    List<String> differingColumns = compareColumns(sourceRow, targetRow, comparisonColumns);
-                    differences.add(buildRowDifference(request, primaryKey, sourceRow, targetRow, differingColumns));
+                    List<String> differingColumns = compareColumns(transformedSourceRow, targetRow, comparisonColumns);
+                    differences.add(buildRowDifference(request, primaryKey, transformedSourceRow, targetRow, differingColumns));
                 }
             } else {
-                List<String> differingColumns = compareColumns(sourceRow, targetRow, comparisonColumns);
+                List<String> differingColumns = compareColumns(transformedSourceRow, targetRow, comparisonColumns);
                 if (!differingColumns.isEmpty()) {
-                    differences.add(buildRowDifference(request, primaryKey, sourceRow, targetRow, differingColumns));
+                    differences.add(buildRowDifference(request, primaryKey, transformedSourceRow, targetRow, differingColumns));
                 }
             }
         }
     }
 
-    private ValidationDifference buildRowDifference(ValidationRequest request, Map<String, Object> primaryKey,
+    private ValidationDifferenceDO buildRowDifference(ValidationRequestDTO request, Map<String, Object> primaryKey,
                                                     Map<String, Object> sourceRow, Map<String, Object> targetRow,
                                                     List<String> differingColumns) throws SQLException {
-        return ValidationDifference.builder()
+        return ValidationDifferenceDO.builder()
                 .taskId(request.getTaskId())
                 .runId(request.getRunId())
                 .differenceType("INCONSISTENT_ROW")
@@ -233,11 +241,11 @@ public class DataValidationEngine {
                 .build();
     }
 
-    private ValidationDifference buildCountDifference(ValidationRun run, long sourceRowCount, long targetRowCount) throws SQLException {
+    private ValidationDifferenceDO buildCountDifference(ValidationRunDO run, long sourceRowCount, long targetRowCount) throws SQLException {
         Map<String, Object> summary = new LinkedHashMap<String, Object>();
         summary.put("sourceRowCount", Long.valueOf(sourceRowCount));
         summary.put("targetRowCount", Long.valueOf(targetRowCount));
-        return ValidationDifference.builder()
+        return ValidationDifferenceDO.builder()
                 .taskId(run.getTaskId())
                 .runId(run.getRunId())
                 .differenceType("ROW_COUNT_MISMATCH")
@@ -247,7 +255,7 @@ public class DataValidationEngine {
                 .build();
     }
 
-    private long countRows(Connection connection, TableMetadata tableMetadata, SchemaSqlDialect dialect, ValidationRequest request) throws SQLException {
+    private long countRows(Connection connection, TableMetadataDO tableMetadata, SchemaSqlDialect dialect, ValidationRequestDTO request) throws SQLException {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT COUNT(1) FROM ").append(dialect.qualifiedTableName(tableMetadata.getSchemaName(), tableMetadata.getTableName()));
         String whereClause = buildWhereClause(request);
@@ -260,8 +268,8 @@ public class DataValidationEngine {
         }
     }
 
-    private List<Map<String, Object>> loadRows(Connection connection, TableMetadata tableMetadata, SchemaSqlDialect dialect,
-                                               ValidationRequest request, List<String> primaryKeyColumns, int limit, long offset)
+    private List<Map<String, Object>> loadRows(Connection connection, TableMetadataDO tableMetadata, SchemaSqlDialect dialect,
+                                               ValidationRequestDTO request, List<String> primaryKeyColumns, int limit, long offset)
             throws SQLException {
         List<String> columns = resolveSelectColumns(tableMetadata);
         StringBuilder sql = new StringBuilder();
@@ -286,7 +294,7 @@ public class DataValidationEngine {
         }
     }
 
-    private List<Map<String, Object>> sampleRows(ValidationRequest request, Connection connection, TableMetadata tableMetadata,
+    private List<Map<String, Object>> sampleRows(ValidationRequestDTO request, Connection connection, TableMetadataDO tableMetadata,
                                                  SchemaSqlDialect dialect, List<String> primaryKeyColumns, int sampleCount)
             throws SQLException {
         long totalRows = countRows(connection, tableMetadata, dialect, request);
@@ -319,7 +327,7 @@ public class DataValidationEngine {
         return result;
     }
 
-    private Map<String, Object> findRowByPrimaryKey(Connection connection, TableMetadata tableMetadata, SchemaSqlDialect dialect,
+    private Map<String, Object> findRowByPrimaryKey(Connection connection, TableMetadataDO tableMetadata, SchemaSqlDialect dialect,
                                                     List<String> primaryKeyColumns, Map<String, Object> primaryKey) throws SQLException {
         if (tableMetadata == null) {
             return null;
@@ -437,10 +445,22 @@ public class DataValidationEngine {
         return row;
     }
 
-    private List<String> resolveSelectColumns(TableMetadata tableMetadata) {
+    private Map<String, Object> transformRow(ValidationRequestDTO request, Map<String, Object> sourceRow, TransformPlan transformPlan) {
+        if (sourceRow == null || transformPlan == null) {
+            return sourceRow;
+        }
+        TransformContext context = TransformContext.builder()
+                .taskId(request.getTaskId())
+                .runId(request.getRunId())
+                .sourceRow(sourceRow)
+                .build();
+        return transformPlan.transformRow(sourceRow, context);
+    }
+
+    private List<String> resolveSelectColumns(TableMetadataDO tableMetadata) {
         List<String> columns = new ArrayList<String>();
         if (tableMetadata != null && tableMetadata.getColumns() != null) {
-            for (ColumnMetadata column : tableMetadata.getColumns()) {
+            for (ColumnMetadataDO column : tableMetadata.getColumns()) {
                 if (column != null && column.getName() != null) {
                     columns.add(column.getName());
                 }
@@ -449,14 +469,14 @@ public class DataValidationEngine {
         return columns;
     }
 
-    private List<String> resolveComparisonColumns(TableMetadata tableMetadata, ValidationRequest request) {
+    private List<String> resolveComparisonColumns(TableMetadataDO tableMetadata, ValidationRequestDTO request) {
         if (request.getHashColumns() != null && !request.getHashColumns().isEmpty()) {
             return new ArrayList<String>(request.getHashColumns());
         }
         return resolveSelectColumns(tableMetadata);
     }
 
-    private List<String> resolvePrimaryKeyColumns(TableMetadata sourceTable, TableMetadata targetTable) {
+    private List<String> resolvePrimaryKeyColumns(TableMetadataDO sourceTable, TableMetadataDO targetTable) {
         List<String> result = SchemaTableUtils.primaryKeyColumns(sourceTable);
         if (result.isEmpty()) {
             result = SchemaTableUtils.primaryKeyColumns(targetTable);
@@ -467,7 +487,7 @@ public class DataValidationEngine {
         return result;
     }
 
-    private String buildWhereClause(ValidationRequest request) {
+    private String buildWhereClause(ValidationRequestDTO request) {
         List<String> clauses = new ArrayList<String>();
         String whereClause = trimToNull(request.getWhereClause());
         if (whereClause != null) {
@@ -529,9 +549,9 @@ public class DataValidationEngine {
         }
     }
 
-    private int countDifferences(List<ValidationDifference> differences, String type) {
+    private int countDifferences(List<ValidationDifferenceDO> differences, String type) {
         int count = 0;
-        for (ValidationDifference difference : differences) {
+        for (ValidationDifferenceDO difference : differences) {
             if (difference != null && type.equalsIgnoreCase(difference.getDifferenceType())) {
                 count++;
             }
@@ -548,7 +568,7 @@ public class DataValidationEngine {
         return "validation-" + (taskId == null ? "task" : String.valueOf(taskId.longValue())) + "-" + now + "-" + UUID.randomUUID().toString().substring(0, 8);
     }
 
-    private void validateRequest(ValidationRequest request) {
+    private void validateRequest(ValidationRequestDTO request) {
         if (request == null) {
             throw new IllegalArgumentException("Validation request must not be null");
         }
@@ -566,8 +586,8 @@ public class DataValidationEngine {
         }
     }
 
-    private TableMetadata findTable(List<SchemaMetadata> schemas, String schemaName, String tableName) {
-        for (SchemaMetadata schemaMetadata : schemas) {
+    private TableMetadataDO findTable(List<SchemaMetadataDO> schemas, String schemaName, String tableName) {
+        for (SchemaMetadataDO schemaMetadata : schemas) {
             if (schemaName != null && schemaName.trim().length() > 0
                     && !schemaName.equalsIgnoreCase(schemaMetadata.getSchemaName())) {
                 continue;
@@ -575,7 +595,7 @@ public class DataValidationEngine {
             if (schemaMetadata.getTables() == null) {
                 continue;
             }
-            for (TableMetadata tableMetadata : schemaMetadata.getTables()) {
+            for (TableMetadataDO tableMetadata : schemaMetadata.getTables()) {
                 if (tableName.equalsIgnoreCase(tableMetadata.getTableName())) {
                     return tableMetadata;
                 }

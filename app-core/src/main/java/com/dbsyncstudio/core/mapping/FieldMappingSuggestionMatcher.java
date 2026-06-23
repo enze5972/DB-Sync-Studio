@@ -1,7 +1,7 @@
 package com.dbsyncstudio.core.mapping;
 
-import com.dbsyncstudio.model.metadata.ColumnMetadata;
-import com.dbsyncstudio.model.sync.FieldMappingSuggestion;
+import com.dbsyncstudio.model.metadata.entity.ColumnMetadataDO;
+import com.dbsyncstudio.model.sync.vo.FieldMappingSuggestionVO;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,21 +17,21 @@ public class FieldMappingSuggestionMatcher {
     private static final Map<String, String> COMMON_ALIASES = buildCommonAliases();
     private static final Set<String> STOP_WORDS = buildStopWords();
 
-    public List<FieldMappingSuggestion> match(List<ColumnMetadata> sourceColumns, List<ColumnMetadata> targetColumns) {
-        List<FieldMappingSuggestion> suggestions = new ArrayList<FieldMappingSuggestion>();
+    public List<FieldMappingSuggestionVO> match(List<ColumnMetadataDO> sourceColumns, List<ColumnMetadataDO> targetColumns) {
+        List<FieldMappingSuggestionVO> suggestions = new ArrayList<FieldMappingSuggestionVO>();
         if (sourceColumns == null || sourceColumns.isEmpty()) {
             return suggestions;
         }
 
-        List<ColumnMetadata> safeTargets = targetColumns == null ? new ArrayList<ColumnMetadata>() : targetColumns;
+        List<ColumnMetadataDO> safeTargets = targetColumns == null ? new ArrayList<ColumnMetadataDO>() : targetColumns;
         Set<String> usedTargetNames = new LinkedHashSet<String>();
 
-        for (ColumnMetadata sourceColumn : sourceColumns) {
+        for (ColumnMetadataDO sourceColumn : sourceColumns) {
             if (sourceColumn == null || sourceColumn.getName() == null || sourceColumn.getName().trim().length() == 0) {
                 continue;
             }
             MatchCandidate bestMatch = findBestMatch(sourceColumn.getName(), safeTargets, usedTargetNames);
-            FieldMappingSuggestion suggestion = new FieldMappingSuggestion();
+            FieldMappingSuggestionVO suggestion = new FieldMappingSuggestionVO();
             suggestion.setSourceColumnName(sourceColumn.getName());
             suggestion.setTargetColumnName(bestMatch.targetColumnName);
             suggestion.setConfidence(bestMatch.confidence);
@@ -45,11 +45,11 @@ public class FieldMappingSuggestionMatcher {
         return suggestions;
     }
 
-    private MatchCandidate findBestMatch(String sourceColumnName, List<ColumnMetadata> targetColumns, Set<String> usedTargetNames) {
+    private MatchCandidate findBestMatch(String sourceColumnName, List<ColumnMetadataDO> targetColumns, Set<String> usedTargetNames) {
         String normalizedSource = normalize(sourceColumnName);
         MatchCandidate bestMatch = MatchCandidate.none();
 
-        for (ColumnMetadata targetColumn : targetColumns) {
+        for (ColumnMetadataDO targetColumn : targetColumns) {
             if (targetColumn == null || targetColumn.getName() == null || targetColumn.getName().trim().length() == 0) {
                 continue;
             }

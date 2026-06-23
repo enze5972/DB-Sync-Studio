@@ -401,6 +401,50 @@ export async function cleanupLogs(payload) {
   })
 }
 
+export async function listTransformRules(params) {
+  return apiRequest('/api/transform-rules' + buildQueryString({
+    taskId: params && params.taskId,
+    tableTaskId: params && params.tableTaskId,
+    fieldMappingId: params && params.fieldMappingId
+  }))
+}
+
+export async function saveTransformRule(payload) {
+  return apiRequest('/api/transform-rules', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export async function deleteTransformRule(id) {
+  return apiRequest('/api/transform-rules/' + id, {
+    method: 'DELETE'
+  })
+}
+
+export async function setTransformRuleEnabled(id, enabled) {
+  return apiRequest('/api/transform-rules/' + id + '/enabled', {
+    method: 'PUT',
+    body: JSON.stringify({
+      enabled: enabled
+    })
+  })
+}
+
+export async function testTransformRule(payload) {
+  return apiRequest('/api/transform-rules/test-rule', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
+export async function testTransformRules(payload) {
+  return apiRequest('/api/transform-rules/test', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  })
+}
+
 export async function listFieldMappings(taskId) {
   return apiRequest('/api/mappings?taskId=' + taskId)
 }

@@ -1,8 +1,8 @@
 package com.dbsyncstudio.core.backend;
 
-import com.dbsyncstudio.model.schema.SchemaComparisonResult;
+import com.dbsyncstudio.model.schema.vo.SchemaComparisonResultVO;
 import com.dbsyncstudio.model.schema.SchemaComparisonType;
-import com.dbsyncstudio.model.schema.SchemaDiffEntry;
+import com.dbsyncstudio.model.schema.entity.SchemaDiffEntryDO;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -14,11 +14,11 @@ public class DesktopBackendServiceSchemaComparisonHistoryTest {
 
     @Test
     public void shouldBuildReadableSchemaComparisonSummary() {
-        List<SchemaDiffEntry> diffEntries = new ArrayList<SchemaDiffEntry>();
-        diffEntries.add(SchemaDiffEntry.builder().diffType(SchemaComparisonType.MISSING_COLUMN).build());
-        diffEntries.add(SchemaDiffEntry.builder().diffType(SchemaComparisonType.INDEX_DIFF).build());
+        List<SchemaDiffEntryDO> diffEntries = new ArrayList<SchemaDiffEntryDO>();
+        diffEntries.add(SchemaDiffEntryDO.builder().diffType(SchemaComparisonType.MISSING_COLUMN).build());
+        diffEntries.add(SchemaDiffEntryDO.builder().diffType(SchemaComparisonType.INDEX_DIFF).build());
 
-        SchemaComparisonResult result = SchemaComparisonResult.builder()
+        SchemaComparisonResultVO result = SchemaComparisonResultVO.builder()
                 .diffEntries(diffEntries)
                 .suggestedSqlList(new ArrayList<String>() {{
                     add("ALTER TABLE t ADD COLUMN c1 VARCHAR(32)");

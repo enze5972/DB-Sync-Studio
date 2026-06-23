@@ -1,6 +1,6 @@
 package com.dbsyncstudio.core.scheduler;
 
-import com.dbsyncstudio.model.sync.SyncTask;
+import com.dbsyncstudio.model.sync.entity.SyncTaskDO;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -9,7 +9,7 @@ public class TaskScheduleCalculatorTest {
 
     @Test
     public void shouldComputeNextRunForCronExpression() {
-        SyncTask task = SyncTask.builder()
+        SyncTaskDO task = SyncTaskDO.builder()
                 .scheduleEnabled(Boolean.TRUE)
                 .scheduleType("CRON")
                 .scheduleCronExpression("0 9 * * *")
@@ -24,7 +24,7 @@ public class TaskScheduleCalculatorTest {
 
     @Test
     public void shouldComputeNextRunForInterval() {
-        SyncTask task = SyncTask.builder()
+        SyncTaskDO task = SyncTaskDO.builder()
                 .scheduleEnabled(Boolean.TRUE)
                 .scheduleType("INTERVAL")
                 .scheduleIntervalSeconds(Integer.valueOf(60))

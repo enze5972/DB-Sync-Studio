@@ -64,6 +64,23 @@ CREATE TABLE IF NOT EXISTS field_mapping (
     updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sync_field_transform_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    table_task_id INTEGER,
+    field_mapping_id INTEGER,
+    source_field TEXT NOT NULL,
+    target_field TEXT NOT NULL,
+    transform_type TEXT NOT NULL,
+    transform_config TEXT,
+    transform_order INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    on_error TEXT NOT NULL DEFAULT 'FAIL',
+    default_value TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS execution_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id INTEGER NOT NULL,

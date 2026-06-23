@@ -6,20 +6,22 @@ import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
 import com.dbsyncstudio.core.schema.SchemaComparisonEngine;
 import com.dbsyncstudio.core.sync.JdbcFullSyncEngine;
 import com.dbsyncstudio.core.sync.JdbcIncrementalSyncEngine;
-import com.dbsyncstudio.model.monitoring.DatasourceConnectionMetric;
-import com.dbsyncstudio.model.monitoring.MonitoringCleanupSummary;
-import com.dbsyncstudio.model.monitoring.TaskRunMetric;
-import com.dbsyncstudio.model.monitoring.TableRunMetric;
-import com.dbsyncstudio.store.sqlite.SqliteConnectionFactory;
-import com.dbsyncstudio.store.sqlite.SqliteDatasourceRepository;
-import com.dbsyncstudio.store.sqlite.SqliteFieldMappingRepository;
-import com.dbsyncstudio.store.sqlite.SqliteIncrementalSyncCheckpointRepository;
-import com.dbsyncstudio.store.sqlite.SqliteMonitoringRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSchemaComparisonHistoryRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSqlExecutionLogRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncTaskRepository;
-import com.dbsyncstudio.store.sync.SqliteExecutionLogRepository;
-import com.dbsyncstudio.store.sync.SqliteSyncCheckpointRepository;
+import com.dbsyncstudio.model.monitoring.entity.DatasourceConnectionMetricDO;
+import com.dbsyncstudio.model.monitoring.vo.MonitoringOverviewVO;
+import com.dbsyncstudio.model.monitoring.vo.MonitoringTrendVO;
+import com.dbsyncstudio.model.monitoring.vo.MonitoringCleanupSummaryVO;
+import com.dbsyncstudio.model.monitoring.entity.TaskRunMetricDO;
+import com.dbsyncstudio.model.monitoring.entity.TableRunMetricDO;
+import com.dbsyncstudio.store.sqlite.DatabaseConnectionFactory;
+import com.dbsyncstudio.store.repository.sqlite.DatasourceRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.FieldMappingRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.IncrementalSyncCheckpointRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.MonitoringRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SchemaComparisonHistoryRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SqlExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncTaskRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.ExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncCheckpointRepositoryImpl;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -37,16 +39,16 @@ public class DesktopBackendServiceMonitoringApiTest {
         }
         tempDatabase.deleteOnExit();
 
-        SqliteConnectionFactory connectionFactory = new SqliteConnectionFactory(tempDatabase);
-        SqliteDatasourceRepository datasourceRepository = new SqliteDatasourceRepository(connectionFactory);
-        SqliteSyncTaskRepository taskRepository = new SqliteSyncTaskRepository(connectionFactory);
-        SqliteExecutionLogRepository executionLogRepository = new SqliteExecutionLogRepository(connectionFactory);
-        SqliteSyncCheckpointRepository syncCheckpointRepository = new SqliteSyncCheckpointRepository(connectionFactory);
-        SqliteFieldMappingRepository fieldMappingRepository = new SqliteFieldMappingRepository(connectionFactory);
-        SqliteSqlExecutionLogRepository sqlExecutionLogRepository = new SqliteSqlExecutionLogRepository(connectionFactory);
-        SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository = new SqliteSchemaComparisonHistoryRepository(connectionFactory);
-        SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository = new SqliteIncrementalSyncCheckpointRepository(connectionFactory);
-        SqliteMonitoringRepository monitoringRepository = new SqliteMonitoringRepository(connectionFactory);
+        DatabaseConnectionFactory connectionFactory = new DatabaseConnectionFactory(tempDatabase);
+        DatasourceRepositoryImpl datasourceRepository = new DatasourceRepositoryImpl(connectionFactory);
+        SyncTaskRepositoryImpl taskRepository = new SyncTaskRepositoryImpl(connectionFactory);
+        ExecutionLogRepositoryImpl executionLogRepository = new ExecutionLogRepositoryImpl(connectionFactory);
+        SyncCheckpointRepositoryImpl syncCheckpointRepository = new SyncCheckpointRepositoryImpl(connectionFactory);
+        FieldMappingRepositoryImpl fieldMappingRepository = new FieldMappingRepositoryImpl(connectionFactory);
+        SqlExecutionLogRepositoryImpl sqlExecutionLogRepository = new SqlExecutionLogRepositoryImpl(connectionFactory);
+        SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository = new SchemaComparisonHistoryRepositoryImpl(connectionFactory);
+        IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository = new IncrementalSyncCheckpointRepositoryImpl(connectionFactory);
+        MonitoringRepositoryImpl monitoringRepository = new MonitoringRepositoryImpl(connectionFactory);
 
         datasourceRepository.initialize();
         taskRepository.initialize();
@@ -59,7 +61,7 @@ public class DesktopBackendServiceMonitoringApiTest {
         monitoringRepository.initialize();
 
         long now = System.currentTimeMillis();
-        monitoringRepository.saveTaskRunMetric(TaskRunMetric.builder()
+        monitoringRepository.saveTaskRunMetric(TaskRunMetricDO.builder()
                 .runId("run-metric-001")
                 .taskId(Long.valueOf(101L))
                 .metricTime(Long.valueOf(now))
@@ -74,7 +76,7 @@ public class DesktopBackendServiceMonitoringApiTest {
                 .todaySuccessTaskCount(Integer.valueOf(2))
                 .todayFailedTaskCount(Integer.valueOf(1))
                 .build());
-        monitoringRepository.saveTableRunMetric(TableRunMetric.builder()
+        monitoringRepository.saveTableRunMetric(TableRunMetricDO.builder()
                 .tableTaskId(Long.valueOf(201L))
                 .taskId(Long.valueOf(101L))
                 .runId("run-metric-001")
@@ -89,7 +91,7 @@ public class DesktopBackendServiceMonitoringApiTest {
                 .lastError("minor retry")
                 .metricTime(Long.valueOf(now))
                 .build());
-        monitoringRepository.saveDatasourceConnectionMetric(DatasourceConnectionMetric.builder()
+        monitoringRepository.saveDatasourceConnectionMetric(DatasourceConnectionMetricDO.builder()
                 .datasourceId(Long.valueOf(301L))
                 .connectionStatus("SUCCESS")
                 .lastSuccessTime(Long.valueOf(now))
@@ -123,30 +125,30 @@ public class DesktopBackendServiceMonitoringApiTest {
                 new JdbcFullSyncEngine(),
                 new JdbcIncrementalSyncEngine(executionLogRepository, incrementalCheckpointRepository));
 
-        MonitoringOverviewResponse overview = service.monitoringOverview();
+        MonitoringOverviewVO overview = service.monitoringOverview();
         Assert.assertNotNull(overview);
         Assert.assertNotNull(overview.getSummary());
         Assert.assertEquals(Integer.valueOf(1), overview.getSummary().getTotalTaskCount());
         Assert.assertNotNull(overview.getLatestTaskMetric());
         Assert.assertEquals("run-metric-001", overview.getLatestTaskMetric().getRunId());
 
-        List<TaskRunMetric> taskMetrics = service.listTaskRunMetrics("run-metric-001", Long.valueOf(101L), null, null, 10);
+        List<TaskRunMetricDO> taskMetrics = service.listTaskRunMetrics("run-metric-001", Long.valueOf(101L), null, null, 10);
         Assert.assertEquals(1, taskMetrics.size());
         Assert.assertEquals(Long.valueOf(120L), taskMetrics.get(0).getSuccessRowCount());
 
-        List<TableRunMetric> tableMetrics = service.listTableRunMetrics("run-metric-001", Long.valueOf(101L), Long.valueOf(201L), null, null, 10);
+        List<TableRunMetricDO> tableMetrics = service.listTableRunMetrics("run-metric-001", Long.valueOf(101L), Long.valueOf(201L), null, null, 10);
         Assert.assertEquals(1, tableMetrics.size());
         Assert.assertEquals("orders", tableMetrics.get(0).getTableName());
 
-        List<DatasourceConnectionMetric> datasourceMetrics = service.listDatasourceConnectionMetrics(Long.valueOf(301L), null, null, 10);
+        List<DatasourceConnectionMetricDO> datasourceMetrics = service.listDatasourceConnectionMetrics(Long.valueOf(301L), null, null, 10);
         Assert.assertEquals(1, datasourceMetrics.size());
         Assert.assertEquals("SUCCESS", datasourceMetrics.get(0).getConnectionStatus());
 
-        MonitoringTrendResponse trend = service.taskRunTrend("run-metric-001", Long.valueOf(101L), null, null, 10);
+        MonitoringTrendVO trend = service.taskRunTrend("run-metric-001", Long.valueOf(101L), null, null, 10);
         Assert.assertEquals(1, trend.getTaskRunTrend().size());
         Assert.assertEquals(Long.valueOf(120L), trend.getTaskRunTrend().get(0).getSuccessRowCount());
 
-        MonitoringCleanupSummary cleanupSummary = service.cleanupMonitoringMetrics(Integer.valueOf(365));
+        MonitoringCleanupSummaryVO cleanupSummary = service.cleanupMonitoringMetrics(Integer.valueOf(365));
         Assert.assertNotNull(cleanupSummary);
         Assert.assertEquals(Integer.valueOf(365), cleanupSummary.getRetentionDays());
     }

@@ -1,7 +1,7 @@
 package com.dbsyncstudio.core.scheduler;
 
 import com.dbsyncstudio.core.backend.DesktopBackendService;
-import com.dbsyncstudio.model.sync.SyncTask;
+import com.dbsyncstudio.model.sync.entity.SyncTaskDO;
 import com.dbsyncstudio.model.sync.SyncTaskStatus;
 
 import java.sql.SQLException;
@@ -53,9 +53,9 @@ public class TaskSchedulerService {
 
     private void pollTasks() {
         try {
-            List<SyncTask> tasks = backendService.listTasks();
+            List<SyncTaskDO> tasks = backendService.listTasks();
             long now = System.currentTimeMillis();
-            for (SyncTask task : safeList(tasks)) {
+            for (SyncTaskDO task : safeList(tasks)) {
                 if (!isEnabled(task)) {
                     continue;
                 }
@@ -70,7 +70,7 @@ public class TaskSchedulerService {
         }
     }
 
-    private void trigger(SyncTask task) {
+    private void trigger(SyncTaskDO task) {
         Long taskId = task.getId();
         if (taskId == null) {
             return;
@@ -82,7 +82,7 @@ public class TaskSchedulerService {
         }
 
         try {
-            SyncTask current = backendService.findTaskById(taskId.longValue()).orElse(task);
+            SyncTaskDO current = backendService.findTaskById(taskId.longValue()).orElse(task);
             if (current.getTaskStatus() == SyncTaskStatus.RUNNING) {
                 appendScheduleLog(taskId.longValue(), "WARN", "Scheduled execution skipped because task is already running");
                 backendService.handleScheduledSkip(taskId.longValue(), "Scheduled execution skipped because task is already running");
@@ -98,7 +98,7 @@ public class TaskSchedulerService {
             backendService.startTask(taskId.longValue());
         } catch (SQLException ex) {
             try {
-                SyncTask failed = backendService.findTaskById(taskId.longValue()).orElse(task);
+                SyncTaskDO failed = backendService.findTaskById(taskId.longValue()).orElse(task);
                 failed.setScheduleLastResult("FAILED");
                 failed.setScheduleLastMessage(ex.getMessage());
                 backendService.saveTask(failed);
@@ -111,7 +111,7 @@ public class TaskSchedulerService {
         }
     }
 
-    private boolean isEnabled(SyncTask task) {
+    private boolean isEnabled(SyncTaskDO task) {
         return task != null && task.getScheduleEnabled() != null && task.getScheduleEnabled().booleanValue();
     }
 
@@ -119,9 +119,9 @@ public class TaskSchedulerService {
         backendService.appendTaskLog(taskId, level, message);
     }
 
-    private List<SyncTask> safeList(List<SyncTask> tasks) {
+    private List<SyncTaskDO> safeList(List<SyncTaskDO> tasks) {
         if (tasks == null) {
-            return new ArrayList<SyncTask>();
+            return new ArrayList<SyncTaskDO>();
         }
         return tasks;
     }

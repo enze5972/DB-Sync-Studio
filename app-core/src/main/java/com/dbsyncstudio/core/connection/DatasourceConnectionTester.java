@@ -1,10 +1,10 @@
 package com.dbsyncstudio.core.connection;
 
-import com.dbsyncstudio.model.datasource.ConnectionTestResult;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.vo.ConnectionTestResultVO;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 
 public interface DatasourceConnectionTester {
 
-    ConnectionTestResult test(DatasourceConfig config);
+    ConnectionTestResultVO test(DatasourceConfigDO config);
 }
 

@@ -10,23 +10,25 @@ import com.dbsyncstudio.core.sync.JdbcIncrementalSyncEngine;
 import com.dbsyncstudio.core.sync.SyncTaskPausedException;
 import com.dbsyncstudio.core.sync.SyncTaskProgressListener;
 import com.dbsyncstudio.core.sync.SyncTaskStoppedException;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.sync.dto.TaskBatchRunDTO;
+import com.dbsyncstudio.model.sync.dto.TaskBatchTableDTO;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.sync.FullSyncRequest;
-import com.dbsyncstudio.model.sync.FullSyncResult;
-import com.dbsyncstudio.model.sync.IncrementalSyncResult;
+import com.dbsyncstudio.model.sync.dto.FullSyncRequestDTO;
+import com.dbsyncstudio.model.sync.vo.FullSyncResultVO;
+import com.dbsyncstudio.model.sync.vo.IncrementalSyncResultVO;
 import com.dbsyncstudio.model.sync.SyncMode;
-import com.dbsyncstudio.model.sync.SyncTask;
+import com.dbsyncstudio.model.sync.entity.SyncTaskDO;
 import com.dbsyncstudio.model.sync.SyncTaskStatus;
-import com.dbsyncstudio.store.sqlite.SqliteConnectionFactory;
-import com.dbsyncstudio.store.sqlite.SqliteDatasourceRepository;
-import com.dbsyncstudio.store.sqlite.SqliteFieldMappingRepository;
-import com.dbsyncstudio.store.sqlite.SqliteIncrementalSyncCheckpointRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSchemaComparisonHistoryRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSqlExecutionLogRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncTaskRepository;
-import com.dbsyncstudio.store.sync.SqliteExecutionLogRepository;
-import com.dbsyncstudio.store.sync.SqliteSyncCheckpointRepository;
+import com.dbsyncstudio.store.sqlite.DatabaseConnectionFactory;
+import com.dbsyncstudio.store.repository.sqlite.DatasourceRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.FieldMappingRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.IncrementalSyncCheckpointRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SchemaComparisonHistoryRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SqlExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncTaskRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.ExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncCheckpointRepositoryImpl;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -48,9 +50,9 @@ public class DesktopBackendServiceBatchRunTest {
         DesktopBackendService service = fixtures.createService(fullSyncEngine, new JdbcIncrementalSyncEngine(
                 fixtures.executionLogRepository, fixtures.incrementalCheckpointRepository));
 
-        TaskBatchRunRequest request = new TaskBatchRunRequest();
+        TaskBatchRunDTO request = new TaskBatchRunDTO();
         request.setRunId("batch-run-001");
-        List<TaskBatchTableRequest> tables = new ArrayList<TaskBatchTableRequest>();
+        List<TaskBatchTableDTO> tables = new ArrayList<TaskBatchTableDTO>();
         tables.add(table("customer", "customer_copy"));
         tables.add(table("orders", "orders_copy"));
         request.setTables(tables);
@@ -74,7 +76,7 @@ public class DesktopBackendServiceBatchRunTest {
         DesktopBackendService service = fixtures.createService(fullSyncEngine, new JdbcIncrementalSyncEngine(
                 fixtures.executionLogRepository, fixtures.incrementalCheckpointRepository));
 
-        TaskBatchRunRequest request = new TaskBatchRunRequest();
+        TaskBatchRunDTO request = new TaskBatchRunDTO();
         request.setTables(singleTableList(table("customer", "customer_copy"), table("orders", "orders_copy")));
 
         service.runBatchTask(fixtures.taskId, request);
@@ -106,15 +108,15 @@ public class DesktopBackendServiceBatchRunTest {
         return false;
     }
 
-    private TaskBatchTableRequest table(String sourceTableName, String targetTableName) {
-        TaskBatchTableRequest table = new TaskBatchTableRequest();
+    private TaskBatchTableDTO table(String sourceTableName, String targetTableName) {
+        TaskBatchTableDTO table = new TaskBatchTableDTO();
         table.setSourceTableName(sourceTableName);
         table.setTargetTableName(targetTableName);
         return table;
     }
 
-    private List<TaskBatchTableRequest> singleTableList(TaskBatchTableRequest first, TaskBatchTableRequest second) {
-        List<TaskBatchTableRequest> tables = new ArrayList<TaskBatchTableRequest>();
+    private List<TaskBatchTableDTO> singleTableList(TaskBatchTableDTO first, TaskBatchTableDTO second) {
+        List<TaskBatchTableDTO> tables = new ArrayList<TaskBatchTableDTO>();
         tables.add(first);
         tables.add(second);
         return tables;
@@ -122,24 +124,24 @@ public class DesktopBackendServiceBatchRunTest {
 
     private static class Fixtures {
 
-        private final SqliteDatasourceRepository datasourceRepository;
-        private final SqliteSyncTaskRepository taskRepository;
-        private final SqliteExecutionLogRepository executionLogRepository;
-        private final SqliteSyncCheckpointRepository syncCheckpointRepository;
-        private final SqliteFieldMappingRepository fieldMappingRepository;
-        private final SqliteSqlExecutionLogRepository sqlExecutionLogRepository;
-        private final SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository;
-        private final SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository;
+        private final DatasourceRepositoryImpl datasourceRepository;
+        private final SyncTaskRepositoryImpl taskRepository;
+        private final ExecutionLogRepositoryImpl executionLogRepository;
+        private final SyncCheckpointRepositoryImpl syncCheckpointRepository;
+        private final FieldMappingRepositoryImpl fieldMappingRepository;
+        private final SqlExecutionLogRepositoryImpl sqlExecutionLogRepository;
+        private final SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository;
+        private final IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository;
         private final long taskId;
 
-        private Fixtures(SqliteDatasourceRepository datasourceRepository,
-                         SqliteSyncTaskRepository taskRepository,
-                         SqliteExecutionLogRepository executionLogRepository,
-                         SqliteSyncCheckpointRepository syncCheckpointRepository,
-                         SqliteFieldMappingRepository fieldMappingRepository,
-                         SqliteSqlExecutionLogRepository sqlExecutionLogRepository,
-                         SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository,
-                         SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository,
+        private Fixtures(DatasourceRepositoryImpl datasourceRepository,
+                         SyncTaskRepositoryImpl taskRepository,
+                         ExecutionLogRepositoryImpl executionLogRepository,
+                         SyncCheckpointRepositoryImpl syncCheckpointRepository,
+                         FieldMappingRepositoryImpl fieldMappingRepository,
+                         SqlExecutionLogRepositoryImpl sqlExecutionLogRepository,
+                         SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository,
+                         IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository,
                          long taskId) {
             this.datasourceRepository = datasourceRepository;
             this.taskRepository = taskRepository;
@@ -159,15 +161,15 @@ public class DesktopBackendServiceBatchRunTest {
             }
             tempDatabase.deleteOnExit();
 
-            SqliteConnectionFactory connectionFactory = new SqliteConnectionFactory(tempDatabase);
-            SqliteDatasourceRepository datasourceRepository = new SqliteDatasourceRepository(connectionFactory);
-            SqliteSyncTaskRepository taskRepository = new SqliteSyncTaskRepository(connectionFactory);
-            SqliteExecutionLogRepository executionLogRepository = new SqliteExecutionLogRepository(connectionFactory);
-            SqliteSyncCheckpointRepository syncCheckpointRepository = new SqliteSyncCheckpointRepository(connectionFactory);
-            SqliteFieldMappingRepository fieldMappingRepository = new SqliteFieldMappingRepository(connectionFactory);
-            SqliteSqlExecutionLogRepository sqlExecutionLogRepository = new SqliteSqlExecutionLogRepository(connectionFactory);
-            SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository = new SqliteSchemaComparisonHistoryRepository(connectionFactory);
-            SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository = new SqliteIncrementalSyncCheckpointRepository(connectionFactory);
+            DatabaseConnectionFactory connectionFactory = new DatabaseConnectionFactory(tempDatabase);
+            DatasourceRepositoryImpl datasourceRepository = new DatasourceRepositoryImpl(connectionFactory);
+            SyncTaskRepositoryImpl taskRepository = new SyncTaskRepositoryImpl(connectionFactory);
+            ExecutionLogRepositoryImpl executionLogRepository = new ExecutionLogRepositoryImpl(connectionFactory);
+            SyncCheckpointRepositoryImpl syncCheckpointRepository = new SyncCheckpointRepositoryImpl(connectionFactory);
+            FieldMappingRepositoryImpl fieldMappingRepository = new FieldMappingRepositoryImpl(connectionFactory);
+            SqlExecutionLogRepositoryImpl sqlExecutionLogRepository = new SqlExecutionLogRepositoryImpl(connectionFactory);
+            SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository = new SchemaComparisonHistoryRepositoryImpl(connectionFactory);
+            IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository = new IncrementalSyncCheckpointRepositoryImpl(connectionFactory);
 
             datasourceRepository.initialize();
             taskRepository.initialize();
@@ -180,7 +182,7 @@ public class DesktopBackendServiceBatchRunTest {
 
             long sourceDatasourceId = datasourceRepository.save(createDatasource("source-db"));
             long targetDatasourceId = datasourceRepository.save(createDatasource("target-db"));
-            SyncTask task = SyncTask.builder()
+            SyncTaskDO task = SyncTaskDO.builder()
                     .taskName(prefix + "-task")
                     .sourceDatasourceId(Long.valueOf(sourceDatasourceId))
                     .targetDatasourceId(Long.valueOf(targetDatasourceId))
@@ -214,8 +216,8 @@ public class DesktopBackendServiceBatchRunTest {
         }
     }
 
-    private static DatasourceConfig createDatasource(String name) {
-        DatasourceConfig datasourceConfig = new DatasourceConfig();
+    private static DatasourceConfigDO createDatasource(String name) {
+        DatasourceConfigDO datasourceConfig = new DatasourceConfigDO();
         datasourceConfig.setName(name);
         datasourceConfig.setType(DatasourceType.MYSQL);
         datasourceConfig.setHost("127.0.0.1");
@@ -229,7 +231,7 @@ public class DesktopBackendServiceBatchRunTest {
     private boolean awaitTaskStatus(Fixtures fixtures, SyncTaskStatus status) throws Exception {
         long deadline = System.currentTimeMillis() + 2000L;
         while (System.currentTimeMillis() < deadline) {
-            Optional<SyncTask> task = fixtures.taskRepository.findById(fixtures.taskId);
+            Optional<SyncTaskDO> task = fixtures.taskRepository.findById(fixtures.taskId);
             if (task.isPresent() && task.get().getTaskStatus() == status) {
                 return true;
             }
@@ -260,11 +262,11 @@ public class DesktopBackendServiceBatchRunTest {
         }
 
         @Override
-        public FullSyncResult sync(FullSyncRequest request, SyncTaskProgressListener progressListener) {
+        public FullSyncResultVO sync(FullSyncRequestDTO request, SyncTaskProgressListener progressListener) {
             invocations.add(new Invocation(request.getSourceTableName(), request.getTargetTableName(), request.getCheckpointKey()));
             callsLatch.countDown();
             try {
-                return FullSyncResult.builder().success(true).sourceRowCount(1L).insertedRowCount(1L).build();
+                return FullSyncResultVO.builder().success(true).sourceRowCount(1L).insertedRowCount(1L).build();
             } finally {
                 completedLatch.countDown();
             }
@@ -295,7 +297,7 @@ public class DesktopBackendServiceBatchRunTest {
         }
 
         @Override
-        public FullSyncResult sync(FullSyncRequest request, SyncTaskProgressListener progressListener) {
+        public FullSyncResultVO sync(FullSyncRequestDTO request, SyncTaskProgressListener progressListener) {
             invocations.add(new Invocation(request.getSourceTableName(), request.getTargetTableName(), request.getCheckpointKey()));
             firstCallStarted.countDown();
             try {
@@ -306,7 +308,7 @@ public class DesktopBackendServiceBatchRunTest {
                 if (progressListener != null && progressListener.isPauseRequested()) {
                     throw new SyncTaskPausedException("paused");
                 }
-                return FullSyncResult.builder().success(true).sourceRowCount(1L).insertedRowCount(1L).build();
+                return FullSyncResultVO.builder().success(true).sourceRowCount(1L).insertedRowCount(1L).build();
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException(ex);

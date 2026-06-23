@@ -1,9 +1,9 @@
 package com.dbsyncstudio.core.bootstrap;
 
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.store.sqlite.SqliteConnectionFactory;
-import com.dbsyncstudio.store.sqlite.SqliteDatasourceRepository;
+import com.dbsyncstudio.store.sqlite.DatabaseConnectionFactory;
+import com.dbsyncstudio.store.repository.sqlite.DatasourceRepositoryImpl;
 
 import java.io.File;
 import java.sql.SQLException;
@@ -17,8 +17,8 @@ public class ApplicationBootstrap {
 
     public void start(String[] args) {
         File databaseFile = AppPaths.databaseFile();
-        SqliteConnectionFactory connectionFactory = new SqliteConnectionFactory(databaseFile);
-        SqliteDatasourceRepository repository = new SqliteDatasourceRepository(connectionFactory);
+        DatabaseConnectionFactory connectionFactory = new DatabaseConnectionFactory(databaseFile);
+        DatasourceRepositoryImpl repository = new DatasourceRepositoryImpl(connectionFactory);
 
         try {
             repository.initialize();
@@ -35,8 +35,8 @@ public class ApplicationBootstrap {
         }
     }
 
-    private void runDatasourceDemo(SqliteDatasourceRepository repository) throws SQLException {
-        DatasourceConfig config = new DatasourceConfig();
+    private void runDatasourceDemo(DatasourceRepositoryImpl repository) throws SQLException {
+        DatasourceConfigDO config = new DatasourceConfigDO();
         config.setName("Local MySQL Demo");
         config.setType(DatasourceType.MYSQL);
         config.setHost("127.0.0.1");
@@ -49,7 +49,7 @@ public class ApplicationBootstrap {
         long id = repository.save(config);
         LOGGER.log(Level.INFO, "Saved datasource config with id {0}", Long.valueOf(id));
 
-        List<DatasourceConfig> datasourceConfigs = repository.findAll();
+        List<DatasourceConfigDO> datasourceConfigs = repository.findAll();
         LOGGER.log(Level.INFO, "Datasource config count: {0}", Integer.valueOf(datasourceConfigs.size()));
     }
 

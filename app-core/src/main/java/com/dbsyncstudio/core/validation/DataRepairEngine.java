@@ -3,13 +3,15 @@ package com.dbsyncstudio.core.validation;
 import com.dbsyncstudio.core.connection.DatasourceConnectionOpener;
 import com.dbsyncstudio.core.schema.DatabaseDialect;
 import com.dbsyncstudio.core.schema.SchemaSqlDialect;
+import com.dbsyncstudio.core.transform.TransformContext;
+import com.dbsyncstudio.core.transform.TransformPlan;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.validation.RepairDetail;
-import com.dbsyncstudio.model.validation.RepairRequest;
-import com.dbsyncstudio.model.validation.RepairResult;
-import com.dbsyncstudio.model.validation.RepairRun;
+import com.dbsyncstudio.model.validation.entity.RepairDetailDO;
+import com.dbsyncstudio.model.validation.dto.RepairRequestDTO;
+import com.dbsyncstudio.model.validation.vo.RepairResultVO;
+import com.dbsyncstudio.model.validation.entity.RepairRunDO;
 import com.dbsyncstudio.model.validation.RepairType;
-import com.dbsyncstudio.model.validation.ValidationDifference;
+import com.dbsyncstudio.model.validation.entity.ValidationDifferenceDO;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,12 +35,16 @@ public class DataRepairEngine {
         this.objectMapper = new ObjectMapper();
     }
 
-    public RepairResult repair(RepairRequest request, List<ValidationDifference> differences) throws SQLException {
+    public RepairResultVO repair(RepairRequestDTO request, List<ValidationDifferenceDO> differences) throws SQLException {
+        return repair(request, differences, null);
+    }
+
+    public RepairResultVO repair(RepairRequestDTO request, List<ValidationDifferenceDO> differences, TransformPlan transformPlan) throws SQLException {
         validateRequest(request);
         String runId = normalizeRunId(request.getRunId(), request.getTaskId());
         request.setRunId(runId);
         long startedAt = System.currentTimeMillis();
-        RepairRun run = RepairRun.builder()
+        RepairRunDO run = RepairRunDO.builder()
                 .validationRunId(request.getValidationRunId())
                 .taskId(request.getTaskId())
                 .runId(runId)
@@ -53,7 +59,7 @@ public class DataRepairEngine {
                 .updatedAt(Long.valueOf(startedAt))
                 .build();
 
-        RepairResult result = RepairResult.builder()
+        RepairResultVO result = RepairResultVO.builder()
                 .run(run)
                 .build();
 
@@ -66,11 +72,11 @@ public class DataRepairEngine {
 
         try (Connection targetConnection = connectionOpener.open(request.getTargetDatasource())) {
             SchemaSqlDialect targetDialect = new SchemaSqlDialect(DatabaseDialect.from(request.getTargetDatasource().getType()));
-            List<RepairDetail> details = new ArrayList<RepairDetail>();
+            List<RepairDetailDO> details = new ArrayList<RepairDetailDO>();
             long successCount = 0L;
             long failedCount = 0L;
-            for (ValidationDifference difference : differences) {
-                RepairDetail detail = buildDetail(request, difference, targetDialect);
+            for (ValidationDifferenceDO difference : differences) {
+                RepairDetailDO detail = buildDetail(request, difference, targetDialect, transformPlan);
                 if (request.isExecute()) {
                     if (request.getRepairType() == RepairType.DELETE_EXTRA && !request.isConfirmDelete()) {
                         throw new SQLException("Delete repair requires explicit confirmation");
@@ -107,9 +113,11 @@ public class DataRepairEngine {
         }
     }
 
-    private RepairDetail buildDetail(RepairRequest request, ValidationDifference difference, SchemaSqlDialect targetDialect) throws SQLException {
+    private RepairDetailDO buildDetail(RepairRequestDTO request, ValidationDifferenceDO difference, SchemaSqlDialect targetDialect,
+                                     TransformPlan transformPlan) throws SQLException {
         Map<String, Object> sourceRow = readJsonMap(difference.getSourceRowJson());
         Map<String, Object> targetRow = readJsonMap(difference.getTargetRowJson());
+        sourceRow = transformRow(request, sourceRow, transformPlan);
         List<String> primaryKeyColumns = resolvePrimaryKeyColumns(request, difference, sourceRow);
         List<String> repairColumns = resolveRepairColumns(request, difference, sourceRow, targetRow, primaryKeyColumns);
 
@@ -125,7 +133,7 @@ public class DataRepairEngine {
             throw new SQLException("Unsupported repair type: " + request.getRepairType());
         }
 
-        return RepairDetail.builder()
+        return RepairDetailDO.builder()
                 .repairRunId(request.getValidationRunId())
                 .validationDifferenceId(difference.getId())
                 .taskId(request.getTaskId())
@@ -139,7 +147,7 @@ public class DataRepairEngine {
                 .build();
     }
 
-    private String buildInsertSql(RepairRequest request, SchemaSqlDialect targetDialect, Map<String, Object> sourceRow,
+    private String buildInsertSql(RepairRequestDTO request, SchemaSqlDialect targetDialect, Map<String, Object> sourceRow,
                                   List<Object> parameters) {
         List<String> columns = new ArrayList<String>(sourceRow.keySet());
         StringBuilder sql = new StringBuilder();
@@ -162,7 +170,7 @@ public class DataRepairEngine {
         return sql.toString();
     }
 
-    private String buildUpdateSql(RepairRequest request, SchemaSqlDialect targetDialect, Map<String, Object> sourceRow,
+    private String buildUpdateSql(RepairRequestDTO request, SchemaSqlDialect targetDialect, Map<String, Object> sourceRow,
                                   Map<String, Object> targetRow, List<String> primaryKeyColumns, List<String> repairColumns,
                                   List<Object> parameters) {
         StringBuilder sql = new StringBuilder();
@@ -187,7 +195,7 @@ public class DataRepairEngine {
         return sql.toString();
     }
 
-    private String buildDeleteSql(RepairRequest request, SchemaSqlDialect targetDialect, Map<String, Object> sourceRow,
+    private String buildDeleteSql(RepairRequestDTO request, SchemaSqlDialect targetDialect, Map<String, Object> sourceRow,
                                   Map<String, Object> targetRow, List<String> primaryKeyColumns, List<Object> parameters) {
         StringBuilder sql = new StringBuilder();
         sql.append("DELETE FROM ").append(targetDialect.qualifiedTableName(request.getTargetSchemaName(), request.getTargetTableName()));
@@ -203,7 +211,7 @@ public class DataRepairEngine {
         return sql.toString();
     }
 
-    private void executeDetail(Connection connection, RepairDetail detail) throws SQLException {
+    private void executeDetail(Connection connection, RepairDetailDO detail) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(detail.getSqlPreview())) {
             List<Object> parameters = readJsonList(detail.getParameterJson());
             for (int i = 0; i < parameters.size(); i++) {
@@ -213,7 +221,7 @@ public class DataRepairEngine {
         }
     }
 
-    private List<String> resolvePrimaryKeyColumns(RepairRequest request, ValidationDifference difference, Map<String, Object> sourceRow) throws SQLException {
+    private List<String> resolvePrimaryKeyColumns(RepairRequestDTO request, ValidationDifferenceDO difference, Map<String, Object> sourceRow) throws SQLException {
         if (request.getPrimaryKeyColumns() != null && !request.getPrimaryKeyColumns().isEmpty()) {
             return new ArrayList<String>(request.getPrimaryKeyColumns());
         }
@@ -224,7 +232,7 @@ public class DataRepairEngine {
         return new ArrayList<String>(sourceRow.keySet());
     }
 
-    private List<String> resolveRepairColumns(RepairRequest request, ValidationDifference difference,
+    private List<String> resolveRepairColumns(RepairRequestDTO request, ValidationDifferenceDO difference,
                                               Map<String, Object> sourceRow, Map<String, Object> targetRow,
                                               List<String> primaryKeyColumns) throws SQLException {
         if (request.getRepairType() == RepairType.INSERT_MISSING) {
@@ -310,7 +318,19 @@ public class DataRepairEngine {
         return null;
     }
 
-    private void validateRequest(RepairRequest request) {
+    private Map<String, Object> transformRow(RepairRequestDTO request, Map<String, Object> sourceRow, TransformPlan transformPlan) {
+        if (sourceRow == null || transformPlan == null) {
+            return sourceRow;
+        }
+        TransformContext context = TransformContext.builder()
+                .taskId(request.getTaskId())
+                .runId(request.getRunId())
+                .sourceRow(sourceRow)
+                .build();
+        return transformPlan.transformRow(sourceRow, context);
+    }
+
+    private void validateRequest(RepairRequestDTO request) {
         if (request == null) {
             throw new IllegalArgumentException("Repair request must not be null");
         }
@@ -328,7 +348,7 @@ public class DataRepairEngine {
         }
     }
 
-    private String resolveTargetTableName(RepairRequest request) {
+    private String resolveTargetTableName(RepairRequestDTO request) {
         if (request.getTargetTableName() != null && request.getTargetTableName().trim().length() > 0) {
             return request.getTargetTableName();
         }

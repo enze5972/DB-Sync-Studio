@@ -4,25 +4,25 @@ import com.dbsyncstudio.core.connection.DatasourceConnectionTester;
 import com.dbsyncstudio.core.mapping.FieldMappingSuggestionMatcher;
 import com.dbsyncstudio.core.metadata.DatabaseMetadataScanner;
 import com.dbsyncstudio.core.schema.SchemaComparisonEngine;
-import com.dbsyncstudio.model.datasource.ConnectionTestResult;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.vo.ConnectionTestResultVO;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.metadata.ColumnMetadata;
-import com.dbsyncstudio.model.metadata.SchemaMetadata;
-import com.dbsyncstudio.model.metadata.TableMetadata;
-import com.dbsyncstudio.model.sync.FieldMappingSuggestion;
+import com.dbsyncstudio.model.metadata.entity.ColumnMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.SchemaMetadataDO;
+import com.dbsyncstudio.model.metadata.entity.TableMetadataDO;
+import com.dbsyncstudio.model.sync.vo.FieldMappingSuggestionVO;
 import com.dbsyncstudio.model.sync.SyncMode;
-import com.dbsyncstudio.model.sync.SyncTask;
+import com.dbsyncstudio.model.sync.entity.SyncTaskDO;
 import com.dbsyncstudio.model.sync.SyncTaskStatus;
-import com.dbsyncstudio.store.sqlite.SqliteConnectionFactory;
-import com.dbsyncstudio.store.sqlite.SqliteDatasourceRepository;
-import com.dbsyncstudio.store.sqlite.SqliteFieldMappingRepository;
-import com.dbsyncstudio.store.sqlite.SqliteIncrementalSyncCheckpointRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSchemaComparisonHistoryRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSqlExecutionLogRepository;
-import com.dbsyncstudio.store.sqlite.SqliteSyncTaskRepository;
-import com.dbsyncstudio.store.sync.SqliteExecutionLogRepository;
-import com.dbsyncstudio.store.sync.SqliteSyncCheckpointRepository;
+import com.dbsyncstudio.store.sqlite.DatabaseConnectionFactory;
+import com.dbsyncstudio.store.repository.sqlite.DatasourceRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.FieldMappingRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.IncrementalSyncCheckpointRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SchemaComparisonHistoryRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SqlExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncTaskRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.ExecutionLogRepositoryImpl;
+import com.dbsyncstudio.store.repository.sqlite.SyncCheckpointRepositoryImpl;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -41,15 +41,15 @@ public class DesktopBackendServiceFieldMappingTest {
         }
         tempDatabase.deleteOnExit();
 
-        SqliteConnectionFactory connectionFactory = new SqliteConnectionFactory(tempDatabase);
-        SqliteDatasourceRepository datasourceRepository = new SqliteDatasourceRepository(connectionFactory);
-        SqliteSyncTaskRepository taskRepository = new SqliteSyncTaskRepository(connectionFactory);
-        SqliteExecutionLogRepository executionLogRepository = new SqliteExecutionLogRepository(connectionFactory);
-        SqliteSyncCheckpointRepository checkpointRepository = new SqliteSyncCheckpointRepository(connectionFactory);
-        SqliteFieldMappingRepository fieldMappingRepository = new SqliteFieldMappingRepository(connectionFactory);
-        SqliteSqlExecutionLogRepository sqlExecutionLogRepository = new SqliteSqlExecutionLogRepository(connectionFactory);
-        SqliteSchemaComparisonHistoryRepository schemaComparisonHistoryRepository = new SqliteSchemaComparisonHistoryRepository(connectionFactory);
-        SqliteIncrementalSyncCheckpointRepository incrementalCheckpointRepository = new SqliteIncrementalSyncCheckpointRepository(connectionFactory);
+        DatabaseConnectionFactory connectionFactory = new DatabaseConnectionFactory(tempDatabase);
+        DatasourceRepositoryImpl datasourceRepository = new DatasourceRepositoryImpl(connectionFactory);
+        SyncTaskRepositoryImpl taskRepository = new SyncTaskRepositoryImpl(connectionFactory);
+        ExecutionLogRepositoryImpl executionLogRepository = new ExecutionLogRepositoryImpl(connectionFactory);
+        SyncCheckpointRepositoryImpl checkpointRepository = new SyncCheckpointRepositoryImpl(connectionFactory);
+        FieldMappingRepositoryImpl fieldMappingRepository = new FieldMappingRepositoryImpl(connectionFactory);
+        SqlExecutionLogRepositoryImpl sqlExecutionLogRepository = new SqlExecutionLogRepositoryImpl(connectionFactory);
+        SchemaComparisonHistoryRepositoryImpl schemaComparisonHistoryRepository = new SchemaComparisonHistoryRepositoryImpl(connectionFactory);
+        IncrementalSyncCheckpointRepositoryImpl incrementalCheckpointRepository = new IncrementalSyncCheckpointRepositoryImpl(connectionFactory);
 
         datasourceRepository.initialize();
         taskRepository.initialize();
@@ -60,7 +60,7 @@ public class DesktopBackendServiceFieldMappingTest {
         schemaComparisonHistoryRepository.initialize();
         incrementalCheckpointRepository.initialize();
 
-        DatasourceConfig datasource = new DatasourceConfig();
+        DatasourceConfigDO datasource = new DatasourceConfigDO();
         datasource.setName("field-mapping-source");
         datasource.setType(DatasourceType.MYSQL);
         datasource.setHost("127.0.0.1");
@@ -70,7 +70,7 @@ public class DesktopBackendServiceFieldMappingTest {
         datasource.setPassword("secret");
         datasourceRepository.save(datasource);
 
-        SyncTask task = new SyncTask();
+        SyncTaskDO task = new SyncTaskDO();
         task.setTaskName("Field Mapping Demo");
         task.setSourceDatasourceId(datasource.getId());
         task.setTargetDatasourceId(datasource.getId());
@@ -84,20 +84,20 @@ public class DesktopBackendServiceFieldMappingTest {
 
         DatabaseMetadataScanner scanner = new DatabaseMetadataScanner() {
             @Override
-            public List<SchemaMetadata> scan(DatasourceConfig config) {
+            public List<SchemaMetadataDO> scan(DatasourceConfigDO config) {
                 return metadata();
             }
 
             @Override
-            public List<SchemaMetadata> scan(Connection connection) {
+            public List<SchemaMetadataDO> scan(Connection connection) {
                 return metadata();
             }
 
-            private List<SchemaMetadata> metadata() {
-                List<SchemaMetadata> schemas = new ArrayList<SchemaMetadata>();
-                SchemaMetadata schema = new SchemaMetadata();
+            private List<SchemaMetadataDO> metadata() {
+                List<SchemaMetadataDO> schemas = new ArrayList<SchemaMetadataDO>();
+                SchemaMetadataDO schema = new SchemaMetadataDO();
                 schema.setSchemaName("default");
-                List<TableMetadata> tables = new ArrayList<TableMetadata>();
+                List<TableMetadataDO> tables = new ArrayList<TableMetadataDO>();
                 tables.add(table("tb_user", "id", "user_name"));
                 schema.setTables(tables);
                 schemas.add(schema);
@@ -107,8 +107,8 @@ public class DesktopBackendServiceFieldMappingTest {
 
         DatasourceConnectionTester connectionTester = new DatasourceConnectionTester() {
             @Override
-            public ConnectionTestResult test(DatasourceConfig config) {
-                return ConnectionTestResult.builder()
+            public ConnectionTestResultVO test(DatasourceConfigDO config) {
+                return ConnectionTestResultVO.builder()
                         .success(true)
                         .message("ok")
                         .costMillis(1L)
@@ -132,19 +132,19 @@ public class DesktopBackendServiceFieldMappingTest {
                 null,
                 null);
 
-        List<FieldMappingSuggestion> suggestions = service.suggestFieldMappings(task.getId().longValue());
+        List<FieldMappingSuggestionVO> suggestions = service.suggestFieldMappings(task.getId().longValue());
 
         Assert.assertEquals(2, suggestions.size());
         Assert.assertEquals("id", suggestions.get(0).getSourceColumnName());
         Assert.assertEquals("user_name", suggestions.get(1).getSourceColumnName());
     }
 
-    private TableMetadata table(String tableName, String... columnNames) {
-        TableMetadata tableMetadata = new TableMetadata();
+    private TableMetadataDO table(String tableName, String... columnNames) {
+        TableMetadataDO tableMetadata = new TableMetadataDO();
         tableMetadata.setTableName(tableName);
-        List<ColumnMetadata> columns = new ArrayList<ColumnMetadata>();
+        List<ColumnMetadataDO> columns = new ArrayList<ColumnMetadataDO>();
         for (String columnName : columnNames) {
-            ColumnMetadata columnMetadata = new ColumnMetadata();
+            ColumnMetadataDO columnMetadata = new ColumnMetadataDO();
             columnMetadata.setName(columnName);
             columns.add(columnMetadata);
         }

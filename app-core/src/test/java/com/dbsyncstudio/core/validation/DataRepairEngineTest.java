@@ -2,12 +2,12 @@ package com.dbsyncstudio.core.validation;
 
 import com.dbsyncstudio.core.connection.DatasourceConnectionOpener;
 import com.dbsyncstudio.core.metadata.JdbcDatabaseMetadataScanner;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
 import com.dbsyncstudio.model.datasource.DatasourceType;
-import com.dbsyncstudio.model.validation.RepairRequest;
-import com.dbsyncstudio.model.validation.RepairResult;
+import com.dbsyncstudio.model.validation.dto.RepairRequestDTO;
+import com.dbsyncstudio.model.validation.vo.RepairResultVO;
 import com.dbsyncstudio.model.validation.RepairType;
-import com.dbsyncstudio.model.validation.ValidationDifference;
+import com.dbsyncstudio.model.validation.entity.ValidationDifferenceDO;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -35,7 +35,7 @@ public class DataRepairEngineTest {
             targetStatement.execute("INSERT INTO users (id, name, amount) VALUES (1, 'Alice', 11.00)");
             DataRepairEngine engine = new DataRepairEngine(h2Opener(connections));
 
-            ValidationDifference missingDifference = ValidationDifference.builder()
+            ValidationDifferenceDO missingDifference = ValidationDifferenceDO.builder()
                     .id(Long.valueOf(1L))
                     .taskId(Long.valueOf(101L))
                     .validationRunId(Long.valueOf(201L))
@@ -46,13 +46,13 @@ public class DataRepairEngineTest {
                     .suggestedRepairType(RepairType.INSERT_MISSING.name())
                     .status("OPEN")
                     .build();
-            RepairRequest insertRequest = baseRepairRequest(RepairType.INSERT_MISSING, true);
-            RepairResult insertResult = engine.repair(insertRequest, java.util.Arrays.asList(missingDifference));
+            RepairRequestDTO insertRequest = baseRepairRequest(RepairType.INSERT_MISSING, true);
+            RepairResultVO insertResult = engine.repair(insertRequest, java.util.Arrays.asList(missingDifference));
             Assert.assertEquals("SUCCESS", insertResult.getRun().getStatus());
             Assert.assertEquals(1, insertResult.getDetails().size());
             assertRowExists(target, 2L, "Bob", "20.00");
 
-            ValidationDifference inconsistentDifference = ValidationDifference.builder()
+            ValidationDifferenceDO inconsistentDifference = ValidationDifferenceDO.builder()
                     .id(Long.valueOf(2L))
                     .taskId(Long.valueOf(101L))
                     .validationRunId(Long.valueOf(202L))
@@ -65,8 +65,8 @@ public class DataRepairEngineTest {
                     .suggestedRepairType(RepairType.UPDATE_INCONSISTENT.name())
                     .status("OPEN")
                     .build();
-            RepairRequest updateRequest = baseRepairRequest(RepairType.UPDATE_INCONSISTENT, true);
-            RepairResult updateResult = engine.repair(updateRequest, java.util.Arrays.asList(inconsistentDifference));
+            RepairRequestDTO updateRequest = baseRepairRequest(RepairType.UPDATE_INCONSISTENT, true);
+            RepairResultVO updateResult = engine.repair(updateRequest, java.util.Arrays.asList(inconsistentDifference));
             Assert.assertEquals("SUCCESS", updateResult.getRun().getStatus());
             Assert.assertEquals(1, updateResult.getDetails().size());
             assertRowExists(target, 1L, "Alice", "10.00");
@@ -86,7 +86,7 @@ public class DataRepairEngineTest {
         }
 
         DataRepairEngine engine = new DataRepairEngine(h2Opener(connections));
-        ValidationDifference extraDifference = ValidationDifference.builder()
+        ValidationDifferenceDO extraDifference = ValidationDifferenceDO.builder()
                 .id(Long.valueOf(3L))
                 .taskId(Long.valueOf(101L))
                 .validationRunId(Long.valueOf(203L))
@@ -98,7 +98,7 @@ public class DataRepairEngineTest {
                 .status("OPEN")
                 .build();
 
-        RepairRequest deleteRequest = baseRepairRequest(RepairType.DELETE_EXTRA, true);
+        RepairRequestDTO deleteRequest = baseRepairRequest(RepairType.DELETE_EXTRA, true);
         deleteRequest.setConfirmDelete(false);
         boolean failed = false;
         try {
@@ -109,16 +109,16 @@ public class DataRepairEngineTest {
         Assert.assertTrue(failed);
     }
 
-    private RepairRequest baseRepairRequest(RepairType repairType, boolean execute) {
-        DatasourceConfig source = DatasourceConfig.builder()
+    private RepairRequestDTO baseRepairRequest(RepairType repairType, boolean execute) {
+        DatasourceConfigDO source = DatasourceConfigDO.builder()
                 .type(DatasourceType.MYSQL)
                 .databaseName("source")
                 .build();
-        DatasourceConfig target = DatasourceConfig.builder()
+        DatasourceConfigDO target = DatasourceConfigDO.builder()
                 .type(DatasourceType.MYSQL)
                 .databaseName("target")
                 .build();
-        return RepairRequest.builder()
+        return RepairRequestDTO.builder()
                 .taskId(Long.valueOf(101L))
                 .validationRunId(Long.valueOf(201L))
                 .sourceDatasource(source)
@@ -147,7 +147,7 @@ public class DataRepairEngineTest {
     private DatasourceConnectionOpener h2Opener(final Map<String, String> connections) {
         return new DatasourceConnectionOpener() {
             @Override
-            public Connection open(DatasourceConfig config) throws java.sql.SQLException {
+            public Connection open(DatasourceConfigDO config) throws java.sql.SQLException {
                 try {
                     return DataRepairEngineTest.this.open(connections.get(config.getDatabaseName()));
                 } catch (Exception ex) {

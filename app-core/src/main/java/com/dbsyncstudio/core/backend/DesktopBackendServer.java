@@ -1,40 +1,44 @@
 package com.dbsyncstudio.core.backend;
 
-import com.dbsyncstudio.model.datasource.ConnectionTestResult;
-import com.dbsyncstudio.model.datasource.DatasourceConfig;
-import com.dbsyncstudio.model.alert.AlertChannel;
-import com.dbsyncstudio.model.alert.AlertRule;
-import com.dbsyncstudio.model.preview.DataPreviewRequest;
-import com.dbsyncstudio.model.preview.DataPreviewResult;
-import com.dbsyncstudio.model.metadata.SchemaMetadata;
-import com.dbsyncstudio.model.schema.SchemaComparisonHistoryEntry;
-import com.dbsyncstudio.model.schema.SchemaComparisonRequest;
-import com.dbsyncstudio.model.schema.SchemaComparisonResult;
-import com.dbsyncstudio.model.schema.SchemaSqlPreviewRequest;
-import com.dbsyncstudio.model.schema.SchemaSqlPreviewResult;
-import com.dbsyncstudio.model.sync.ExecutionLogEntry;
-import com.dbsyncstudio.model.sync.FieldMappingRule;
-import com.dbsyncstudio.model.sync.SyncRun;
-import com.dbsyncstudio.model.sync.SyncRunLogEntry;
-import com.dbsyncstudio.model.sync.SyncTableRun;
-import com.dbsyncstudio.model.sync.SyncTask;
-import com.dbsyncstudio.model.sync.SyncTaskTable;
-import com.dbsyncstudio.model.sync.LogCleanupSummary;
-import com.dbsyncstudio.model.sql.SqlExecutionLogEntry;
-import com.dbsyncstudio.model.sql.SqlExecutionRequest;
-import com.dbsyncstudio.model.sql.SqlExecutionResult;
-import com.dbsyncstudio.model.validation.RepairDetail;
-import com.dbsyncstudio.model.validation.RepairRequest;
-import com.dbsyncstudio.model.validation.RepairResult;
-import com.dbsyncstudio.model.validation.RepairRun;
-import com.dbsyncstudio.model.validation.ValidationDifference;
+import com.dbsyncstudio.model.datasource.vo.ConnectionTestResultVO;
+import com.dbsyncstudio.model.datasource.entity.DatasourceConfigDO;
+import com.dbsyncstudio.model.alert.entity.AlertChannelDO;
+import com.dbsyncstudio.model.alert.entity.AlertRuleDO;
+import com.dbsyncstudio.model.preview.dto.DataPreviewRequestDTO;
+import com.dbsyncstudio.model.preview.vo.DataPreviewResultVO;
+import com.dbsyncstudio.model.metadata.entity.SchemaMetadataDO;
+import com.dbsyncstudio.model.schema.entity.SchemaComparisonHistoryEntryDO;
+import com.dbsyncstudio.model.schema.dto.SchemaComparisonRequestDTO;
+import com.dbsyncstudio.model.schema.vo.SchemaComparisonResultVO;
+import com.dbsyncstudio.model.schema.dto.SchemaSqlPreviewRequestDTO;
+import com.dbsyncstudio.model.schema.vo.SchemaSqlPreviewResultVO;
+import com.dbsyncstudio.model.sync.entity.ExecutionLogEntryDO;
+import com.dbsyncstudio.model.sync.entity.FieldMappingRuleDO;
+import com.dbsyncstudio.model.sync.entity.SyncRunDO;
+import com.dbsyncstudio.model.sync.entity.SyncRunLogEntryDO;
+import com.dbsyncstudio.model.sync.entity.SyncTableRunDO;
+import com.dbsyncstudio.model.sync.entity.SyncTaskDO;
+import com.dbsyncstudio.model.sync.entity.SyncTaskTableDO;
+import com.dbsyncstudio.model.sync.vo.LogCleanupSummaryVO;
+import com.dbsyncstudio.model.sync.entity.TransformRuleDO;
+import com.dbsyncstudio.model.sync.dto.TransformTestRequestDTO;
+import com.dbsyncstudio.model.sql.entity.SqlExecutionLogEntryDO;
+import com.dbsyncstudio.model.sql.dto.SqlExecutionRequestDTO;
+import com.dbsyncstudio.model.sql.vo.SqlExecutionResultVO;
+import com.dbsyncstudio.model.validation.entity.RepairDetailDO;
+import com.dbsyncstudio.model.validation.dto.RepairRequestDTO;
+import com.dbsyncstudio.model.validation.vo.RepairResultVO;
+import com.dbsyncstudio.model.validation.entity.RepairRunDO;
+import com.dbsyncstudio.model.validation.entity.ValidationDifferenceDO;
 import com.dbsyncstudio.model.validation.ValidationMode;
-import com.dbsyncstudio.model.validation.ValidationRequest;
-import com.dbsyncstudio.model.validation.ValidationResult;
-import com.dbsyncstudio.model.validation.ValidationRun;
-import com.dbsyncstudio.model.settings.AppSettings;
-import com.dbsyncstudio.model.settings.AppLicenseRequest;
-import com.dbsyncstudio.core.backend.AppUpdateCheckRequest;
+import com.dbsyncstudio.model.validation.dto.ValidationRequestDTO;
+import com.dbsyncstudio.model.validation.vo.ValidationResultVO;
+import com.dbsyncstudio.model.validation.entity.ValidationRunDO;
+import com.dbsyncstudio.model.settings.entity.AppSettingsDO;
+import com.dbsyncstudio.model.settings.dto.AppLicenseRequestDTO;
+import com.dbsyncstudio.model.settings.dto.AppUpdateCheckDTO;
+import com.dbsyncstudio.model.sync.dto.LogCleanupDTO;
+import com.dbsyncstudio.model.sync.dto.TaskBatchRunDTO;
 import com.dbsyncstudio.core.scheduler.TaskSchedulerService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -122,7 +126,7 @@ public class DesktopBackendServer {
                     return backendService.loadAppSettingsResponse();
                 }
                 if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                    AppSettings settings = readBody(exchange, AppSettings.class);
+                    AppSettingsDO settings = readBody(exchange, AppSettingsDO.class);
                     return backendService.saveAppSettings(settings);
                 }
                 throw methodNotAllowed();
@@ -136,7 +140,7 @@ public class DesktopBackendServer {
                     return backendService.loadLicenseInfo();
                 }
                 if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                    AppLicenseRequest request = readBody(exchange, AppLicenseRequest.class);
+                    AppLicenseRequestDTO request = readBody(exchange, AppLicenseRequestDTO.class);
                     return backendService.activateLicense(request == null ? null : request.getLicenseKey());
                 }
                 if ("DELETE".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -152,7 +156,7 @@ public class DesktopBackendServer {
                 if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     throw methodNotAllowed();
                 }
-                readBody(exchange, AppUpdateCheckRequest.class);
+                readBody(exchange, AppUpdateCheckDTO.class);
                 return backendService.checkForUpdate();
             }
         });
@@ -164,7 +168,7 @@ public class DesktopBackendServer {
                     return backendService.listDatasources();
                 }
                 if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                    DatasourceConfig config = readBody(exchange, DatasourceConfig.class);
+                    DatasourceConfigDO config = readBody(exchange, DatasourceConfigDO.class);
                     return backendService.saveDatasource(config);
                 }
                 if ("DELETE".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -181,8 +185,8 @@ public class DesktopBackendServer {
                 if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     throw methodNotAllowed();
                 }
-                DatasourceConfig config = readBody(exchange, DatasourceConfig.class);
-                ConnectionTestResult result = backendService.testConnection(config);
+                DatasourceConfigDO config = readBody(exchange, DatasourceConfigDO.class);
+                ConnectionTestResultVO result = backendService.testConnection(config);
                 return result;
             }
         });
@@ -197,7 +201,7 @@ public class DesktopBackendServer {
                         return backendService.listTasks();
                     }
                     if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        SyncTask task = readBody(exchange, SyncTask.class);
+                        SyncTaskDO task = readBody(exchange, SyncTaskDO.class);
                         return backendService.saveTask(task);
                     }
                 }
@@ -215,7 +219,7 @@ public class DesktopBackendServer {
                         throw methodNotAllowed();
                     }
                     long taskId = extractTaskId(path);
-                    TaskBatchRunRequest request = readBody(exchange, TaskBatchRunRequest.class);
+                    TaskBatchRunDTO request = readBody(exchange, TaskBatchRunDTO.class);
                     return backendService.runBatchTask(taskId, request);
                 }
 
@@ -225,7 +229,7 @@ public class DesktopBackendServer {
                         return backendService.listTaskTables(taskId);
                     }
                     if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        SyncTaskTable taskTable = readBody(exchange, SyncTaskTable.class);
+                        SyncTaskTableDO taskTable = readBody(exchange, SyncTaskTableDO.class);
                         return backendService.saveTaskTable(taskId, taskTable);
                     }
                     throw methodNotAllowed();
@@ -254,7 +258,7 @@ public class DesktopBackendServer {
                     }
                     long taskId = extractTaskId(path);
                     String runId = extractNestedRunId(path);
-                    SyncRun run = backendService.findSyncRunByRunId(runId).orElse(null);
+                    SyncRunDO run = backendService.findSyncRunByRunId(runId).orElse(null);
                     if (run == null || run.getTaskId() == null || run.getTaskId().longValue() != taskId) {
                         throw new HttpError(404, "Sync run not found");
                     }
@@ -461,7 +465,7 @@ public class DesktopBackendServer {
                 if (!"DELETE".equalsIgnoreCase(exchange.getRequestMethod())) {
                     throw methodNotAllowed();
                 }
-                LogCleanupRequest request = readBody(exchange, LogCleanupRequest.class);
+                LogCleanupDTO request = readBody(exchange, LogCleanupDTO.class);
                 return backendService.cleanupMonitoringMetrics(request == null ? null : request.getRetentionDays());
             }
         });
@@ -476,7 +480,7 @@ public class DesktopBackendServer {
                         return backendService.listAlertRules();
                     }
                     if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        AlertRule rule = readBody(exchange, AlertRule.class);
+                        AlertRuleDO rule = readBody(exchange, AlertRuleDO.class);
                         return backendService.saveAlertRule(rule);
                     }
                 }
@@ -500,7 +504,7 @@ public class DesktopBackendServer {
                         return backendService.listAlertChannels();
                     }
                     if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        AlertChannel channel = readBody(exchange, AlertChannel.class);
+                        AlertChannelDO channel = readBody(exchange, AlertChannelDO.class);
                         return backendService.saveAlertChannel(channel);
                     }
                 }
@@ -552,11 +556,11 @@ public class DesktopBackendServer {
                     return loadLogs(exchange);
                 }
                 if ("DELETE".equalsIgnoreCase(exchange.getRequestMethod())) {
-                    LogCleanupRequest request = readBody(exchange, LogCleanupRequest.class);
+                    LogCleanupDTO request = readBody(exchange, LogCleanupDTO.class);
                     return backendService.cleanupLogs(request == null ? null : request.getRetentionDays());
                 }
                 if ("PUT".equalsIgnoreCase(exchange.getRequestMethod())) {
-                    LogCleanupRequest request = readBody(exchange, LogCleanupRequest.class);
+                    LogCleanupDTO request = readBody(exchange, LogCleanupDTO.class);
                     return Integer.valueOf(backendService.updateLogRetentionDays(request == null || request.getRetentionDays() == null ? 30 : request.getRetentionDays().intValue()));
                 }
                 throw methodNotAllowed();
@@ -587,7 +591,7 @@ public class DesktopBackendServer {
                         return backendService.listFieldMappings(taskId.longValue());
                     }
                     if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        FieldMappingRule mappingRule = readBody(exchange, FieldMappingRule.class);
+                        FieldMappingRuleDO mappingRule = readBody(exchange, FieldMappingRuleDO.class);
                         return backendService.saveFieldMapping(mappingRule);
                     }
                 }
@@ -615,6 +619,54 @@ public class DesktopBackendServer {
             }
         });
 
+        httpServer.createContext("/api/transform-rules", new JsonHandler() {
+            @Override
+            protected Object process(HttpExchange exchange) throws Exception {
+                URI requestUri = exchange.getRequestURI();
+                String path = requestUri.getPath();
+                if ("/api/transform-rules".equals(path)) {
+                    if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        Long taskId = extractQueryLong(requestUri, "taskId");
+                        if (taskId == null) {
+                            throw new HttpError(400, "taskId is required");
+                        }
+                        Long tableTaskId = extractQueryLong(requestUri, "tableTaskId");
+                        Long fieldMappingId = extractQueryLong(requestUri, "fieldMappingId");
+                        return backendService.listTransformRules(taskId, tableTaskId, fieldMappingId);
+                    }
+                    if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        TransformRuleDO rule = readBody(exchange, TransformRuleDO.class);
+                        return backendService.saveTransformRule(rule);
+                    }
+                }
+                if (path.matches("^/api/transform-rules/\\d+$")) {
+                    if ("DELETE".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        return Boolean.valueOf(backendService.deleteTransformRule(extractTailId(requestUri)));
+                    }
+                }
+                if (path.matches("^/api/transform-rules/\\d+/enabled$")) {
+                    if (!"PUT".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        throw methodNotAllowed();
+                    }
+                    TransformRuleEnabledRequest request = readBody(exchange, TransformRuleEnabledRequest.class);
+                    boolean enabled = request != null && Boolean.TRUE.equals(request.enabled);
+                    return backendService.setTransformRuleEnabled(extractTailParentId(path), enabled);
+                }
+                if (path.endsWith("/test") || path.endsWith("/test-rule")) {
+                    if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        throw methodNotAllowed();
+                    }
+                    TransformTestRequestDTO request = readBody(exchange, TransformTestRequestDTO.class);
+                    if (path.endsWith("/test-rule")) {
+                        return backendService.testTransformRule(request == null || request.getRules() == null || request.getRules().isEmpty()
+                                ? null : request.getRules().get(0), request == null ? null : request.getValue());
+                    }
+                    return backendService.testTransformRules(request);
+                }
+                throw notFound();
+            }
+        });
+
         httpServer.createContext("/api/metadata", new JsonHandler() {
             @Override
             protected Object process(HttpExchange exchange) throws Exception {
@@ -625,7 +677,7 @@ public class DesktopBackendServer {
                 if (datasourceId == null) {
                     throw new HttpError(400, "datasourceId is required");
                 }
-                List<SchemaMetadata> schemas = backendService.scanMetadata(datasourceId.longValue());
+                List<SchemaMetadataDO> schemas = backendService.scanMetadata(datasourceId.longValue());
                 return schemas;
             }
         });
@@ -636,8 +688,8 @@ public class DesktopBackendServer {
                 if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     throw methodNotAllowed();
                 }
-                SchemaComparisonRequest request = readBody(exchange, SchemaComparisonRequest.class);
-                SchemaComparisonResult result = backendService.compareSchema(request);
+                SchemaComparisonRequestDTO request = readBody(exchange, SchemaComparisonRequestDTO.class);
+                SchemaComparisonResultVO result = backendService.compareSchema(request);
                 return result;
             }
         });
@@ -653,7 +705,7 @@ public class DesktopBackendServer {
                 if (safeLimit <= 0) {
                     safeLimit = 20;
                 }
-                List<SchemaComparisonHistoryEntry> historyEntries = backendService.listSchemaComparisonHistory(safeLimit);
+                List<SchemaComparisonHistoryEntryDO> historyEntries = backendService.listSchemaComparisonHistory(safeLimit);
                 return historyEntries;
             }
         });
@@ -664,8 +716,8 @@ public class DesktopBackendServer {
                 if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     throw methodNotAllowed();
                 }
-                SchemaSqlPreviewRequest request = readBody(exchange, SchemaSqlPreviewRequest.class);
-                SchemaSqlPreviewResult result = backendService.previewSchemaSql(request);
+                SchemaSqlPreviewRequestDTO request = readBody(exchange, SchemaSqlPreviewRequestDTO.class);
+                SchemaSqlPreviewResultVO result = backendService.previewSchemaSql(request);
                 return result;
             }
         });
@@ -676,7 +728,7 @@ public class DesktopBackendServer {
                 if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     throw methodNotAllowed();
                 }
-                SchemaSqlPreviewRequest request = readBody(exchange, SchemaSqlPreviewRequest.class);
+                SchemaSqlPreviewRequestDTO request = readBody(exchange, SchemaSqlPreviewRequestDTO.class);
                 return backendService.executeSchemaSql(request);
             }
         });
@@ -687,7 +739,7 @@ public class DesktopBackendServer {
                 if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     throw methodNotAllowed();
                 }
-                DataPreviewRequest request = readBody(exchange, DataPreviewRequest.class);
+                DataPreviewRequestDTO request = readBody(exchange, DataPreviewRequestDTO.class);
                 return backendService.previewTableData(request);
             }
         });
@@ -698,7 +750,7 @@ public class DesktopBackendServer {
                 if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     throw methodNotAllowed();
                 }
-                SqlExecutionRequest request = readBody(exchange, SqlExecutionRequest.class);
+                SqlExecutionRequestDTO request = readBody(exchange, SqlExecutionRequestDTO.class);
                 return backendService.executeSql(request);
             }
         });
@@ -725,7 +777,7 @@ public class DesktopBackendServer {
                 String path = requestUri.getPath();
                 if ("/api/validation".equals(path)) {
                     if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        ValidationRequest request = readBody(exchange, ValidationRequest.class);
+                        ValidationRequestDTO request = readBody(exchange, ValidationRequestDTO.class);
                         return backendService.runValidation(request);
                     }
                     if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -748,7 +800,7 @@ public class DesktopBackendServer {
                         return backendService.listRepairRuns(Long.valueOf(validationRunId), limit == null ? 20 : limit.intValue());
                     }
                     if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        RepairRequest request = readBody(exchange, RepairRequest.class);
+                        RepairRequestDTO request = readBody(exchange, RepairRequestDTO.class);
                         return backendService.runRepair(request);
                     }
                 }
@@ -777,7 +829,7 @@ public class DesktopBackendServer {
             }
         }
         if (taskId == null) {
-            List<SyncTask> tasks = backendService.listTasks();
+            List<SyncTaskDO> tasks = backendService.listTasks();
             if (tasks.isEmpty()) {
                 return backendService.listLogs(null);
             }
@@ -922,6 +974,10 @@ public class DesktopBackendServer {
     private static class AlertChannelTestRequest {
         public Long channelId;
         public String content;
+    }
+
+    private static class TransformRuleEnabledRequest {
+        public Boolean enabled;
     }
 
     private Map<String, Object> wrapSuccess(Object data) {
