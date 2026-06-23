@@ -72,3 +72,38 @@ test('cleanupAppImageArtifacts removes generated AppImage outputs but keeps scri
 
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
+
+test('applyLinuxRuntimeLibraryPath prepends embedded runtime directories on Linux', function () {
+  const source = fs.readFileSync(SCRIPT_PATH, 'utf8')
+    .replace('main();', '')
+    .replace('const JAVA_HOME_REQUIRED = resolveJavaHome(JAVA_VERSION_REQUIRED);', 'const JAVA_HOME_REQUIRED = "/java";');
+  const tmpDir = fs.mkdtempSync(path.join(__dirname, 'package-linux-'));
+  const runtimeLibDir = path.join(tmpDir, 'app-shell', 'src-tauri', 'resources', 'backend', 'runtime', 'lib');
+  const runtimeServerDir = path.join(runtimeLibDir, 'server');
+  fs.mkdirSync(runtimeServerDir, { recursive: true });
+
+  const context = vm.createContext({
+    console,
+    require,
+    module: {},
+    exports: {},
+    __dirname: path.join(tmpDir, 'scripts'),
+    __filename: path.join(tmpDir, 'scripts', 'package.js'),
+    process: {
+      argv: ['node', 'package.js', 'linux'],
+      platform: 'linux',
+      env: {}
+    }
+  });
+  vm.runInContext(source, context, { filename: SCRIPT_PATH });
+
+  const env = { LD_LIBRARY_PATH: '/system/lib' };
+  context.applyLinuxRuntimeLibraryPath(env);
+
+  assert.equal(
+    env.LD_LIBRARY_PATH,
+    runtimeServerDir + path.delimiter + runtimeLibDir + path.delimiter + '/system/lib'
+  );
+
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});

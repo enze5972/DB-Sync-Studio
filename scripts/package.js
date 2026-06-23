@@ -172,11 +172,14 @@ function buildTauriBundle() {
 
   validateBundleInputs();
 
+  const tauriEnv = Object.assign({}, process.env, {
+    PATH: buildToolPath()
+  });
+  applyLinuxRuntimeLibraryPath(tauriEnv);
+
   const result = spawnSync(cargo, ['tauri', 'build'], {
     cwd: path.join(ROOT, 'app-shell'),
-    env: Object.assign({}, process.env, {
-      PATH: buildToolPath()
-    }),
+    env: tauriEnv,
     stdio: 'inherit'
   });
 
@@ -263,6 +266,25 @@ function cleanupAppImageArtifacts(appimageDir) {
     }
     fs.rmSync(path.join(appimageDir, entry), { recursive: true, force: true });
   });
+}
+
+function applyLinuxRuntimeLibraryPath(env) {
+  if (PLATFORM !== 'linux') {
+    return env;
+  }
+
+  const runtimeLibDir = path.join(TAURI_RESOURCE_BACKEND_DIR, 'runtime', 'lib');
+  const runtimeServerDir = path.join(runtimeLibDir, 'server');
+  const candidates = [runtimeServerDir, runtimeLibDir].filter(function (dirPath) {
+    return fs.existsSync(dirPath);
+  });
+  if (candidates.length === 0) {
+    return env;
+  }
+
+  const currentValue = env.LD_LIBRARY_PATH || '';
+  env.LD_LIBRARY_PATH = candidates.concat(currentValue ? [currentValue] : []).join(path.delimiter);
+  return env;
 }
 
 function finalizeMacosDmg(bundleDir) {
