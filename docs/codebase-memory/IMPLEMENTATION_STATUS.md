@@ -200,3 +200,4 @@
 - 2026-06-23: GitHub release workflow 的 Windows job 需要显式安装 Maven 才能跑 `scripts/package.js windows`
 - 2026-06-23: Windows 打包脚本在重建 Java 环境时需要同时保留 `Path` 和 `PATH`，否则会把 Maven 路径冲掉并导致 `mvn` 不可用
 - 2026-06-23: `scripts/package-env.test.js` 已补上并通过，锁定 Windows `Path` / `PATH` 回归
+- 2026-06-23: Windows desktop shell 启动日志已改为写入 `~/.db-sync-studio/logs/startup.log`（Windows 实际路径为 `APPDATA\.db-sync-studio\logs\startup.log`），后端 stdout/stderr 也会一起写入

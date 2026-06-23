@@ -1,4 +1,7 @@
+use std::env;
+use std::fs::{create_dir_all, File, OpenOptions};
 use std::io;
+use std::io::Write;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -35,8 +38,21 @@ pub fn start_backend(app: AppHandle) -> Result<BackendHandle, io::Error> {
     let port = allocate_port()?;
     let java_executable = resolve_java_executable(&backend_root);
     let classpath = build_classpath(&backend_root);
+    let mut log_file = open_startup_log_file()?;
+
+    log_startup_line(
+        &mut log_file,
+        &format!(
+            "Starting backend. root={}, java={}, port={}",
+            backend_root.display(),
+            java_executable.display(),
+            port
+        ),
+    )?;
 
     let mut command = Command::new(java_executable);
+    let stdout_log = log_file.try_clone()?;
+    let stderr_log = log_file.try_clone()?;
     command
         .current_dir(&backend_root)
         .arg("-cp")
@@ -45,11 +61,26 @@ pub fn start_backend(app: AppHandle) -> Result<BackendHandle, io::Error> {
         .arg("--server")
         .arg(format!("--port={}", port))
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stdout(Stdio::from(stdout_log))
+        .stderr(Stdio::from(stderr_log));
 
-    let child = command.spawn().map_err(|err| io::Error::new(io::ErrorKind::Other, format!("Failed to launch backend: {}", err)))?;
-    wait_for_port(port)?;
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            let _ = log_startup_line(&mut log_file, &format!("Failed to launch backend: {}", err));
+            return Err(io::Error::new(io::ErrorKind::Other, format!("Failed to launch backend: {}", err)));
+        }
+    };
+
+    if let Err(err) = wait_for_port(port) {
+        let _ = log_startup_line(
+            &mut log_file,
+            &format!("Backend failed to start on port {}: {}", port, err),
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(err);
+    }
 
     Ok(BackendHandle {
         base_url: format!("http://127.0.0.1:{}", port),
@@ -123,4 +154,50 @@ fn wait_for_port(port: u16) -> Result<(), io::Error> {
         io::ErrorKind::TimedOut,
         format!("Backend did not start on port {}", port),
     ))
+}
+
+pub fn append_startup_log_line(message: &str) {
+    if let Ok(mut file) = open_startup_log_file() {
+        let _ = log_startup_line(&mut file, message);
+    }
+}
+
+fn open_startup_log_file() -> Result<File, io::Error> {
+    let log_file_path = startup_log_path();
+    if let Some(parent) = log_file_path.parent() {
+        create_dir_all(parent)?;
+    }
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_file_path)
+}
+
+fn log_startup_line(file: &mut File, message: &str) -> Result<(), io::Error> {
+    writeln!(file, "{}", message)?;
+    file.flush()
+}
+
+fn startup_log_path() -> PathBuf {
+    resolve_app_directory().join("logs").join("startup.log")
+}
+
+fn resolve_app_directory() -> PathBuf {
+    let user_home = env::var_os("USERPROFILE")
+        .or_else(|| env::var_os("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    if cfg!(target_os = "windows") {
+        if let Some(appdata) = env::var_os("APPDATA") {
+            return PathBuf::from(appdata).join(".db-sync-studio");
+        }
+        return user_home.join("AppData").join("Roaming").join(".db-sync-studio");
+    }
+    if cfg!(target_os = "macos") {
+        return user_home.join("Library").join("Application Support").join(".db-sync-studio");
+    }
+    if let Some(xdg_data_home) = env::var_os("XDG_DATA_HOME") {
+        return PathBuf::from(xdg_data_home).join(".db-sync-studio");
+    }
+    user_home.join(".local").join("share").join(".db-sync-studio")
 }
